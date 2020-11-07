@@ -1,9 +1,11 @@
 defmodule PlumaApiWeb.SubscriberView do
   use PlumaApiWeb, :view
+  alias PlumaApi.Repo
 
   def render("details.json", %{subscriber: sub}) do
+    sub = Repo.preload(sub, :referees)
+
     %{
-      id: sub.id,
       email: sub.email,
       rid: sub.rid,
       parent_rid: sub.parent_rid,

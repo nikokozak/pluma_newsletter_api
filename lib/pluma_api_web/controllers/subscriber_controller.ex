@@ -19,7 +19,7 @@ defmodule PlumaApiWeb.SubscriberController do
 
   def subscriber_details(conn, _params = %{"rid" => rid}) do
     subscriber = Subscriber.with_rid(rid)
-                 |> Subscriber.preload_referees
+                 |> Subscriber.preload_referees()
 
     handle_get_subscriber(conn, subscriber)
   end
@@ -32,6 +32,7 @@ defmodule PlumaApiWeb.SubscriberController do
         |> put_view(ErrorView)
         |> render("404.json", message: "Could not find subscriber")
       sub ->
+        IO.inspect(sub)
         conn
         |> put_status(200)
         |> render("details.json", subscriber: sub)

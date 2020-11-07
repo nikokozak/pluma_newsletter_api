@@ -1,7 +1,0 @@
-env: flex
-runtime: gs://elixir-runtime/elixir.yaml
-runtime_config:
-    release_app: pluma_api
-beta_settings:
-    cloud_sql_instances: pluma-290520:us-central1:pluma-newsletter-db
-

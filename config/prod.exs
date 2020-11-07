@@ -10,7 +10,7 @@ use Mix.Config
 # which you should run after static files are built and
 # before starting your production server.
 config :pluma_api, PlumaApiWeb.Endpoint,
-  url: [scheme: "https", host: "${APP_NAME}.gigalixirapp.com", port: 443],
+  url: [host: "${APP_NAME}.gigalixirapp.com", port: 443],
   secret_key_base: Map.fetch!(System.get_env(), "SECRET_KEY_BASE"),
   http: [port: {:system, "PORT"}],
   server: true

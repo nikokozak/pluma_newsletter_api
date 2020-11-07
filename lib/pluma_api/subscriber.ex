@@ -9,6 +9,8 @@ defmodule PlumaApi.Subscriber do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
+  @derive {Jason.Encoder, only: [:mchimp_id, :email, :list, :rid, :parent_rid]}
+
   schema "subscribers" do
 
     field :mchimp_id, :string

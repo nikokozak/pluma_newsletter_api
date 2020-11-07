@@ -5,8 +5,6 @@ defmodule PlumaApiWeb.SubscriberView do
   def render("details.json", %{subscriber: sub}) do
     sub = Repo.preload(sub, :referees)
 
-    IO.inspect(sub)
-
     %{
       email: sub.email,
       rid: sub.rid,

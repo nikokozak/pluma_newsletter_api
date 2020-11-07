@@ -32,7 +32,6 @@ defmodule PlumaApiWeb.SubscriberController do
         |> put_view(ErrorView)
         |> render("404.json", message: "Could not find subscriber")
       sub ->
-        IO.inspect(sub)
         conn
         |> put_status(200)
         |> render("details.json", subscriber: sub)

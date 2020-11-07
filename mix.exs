@@ -10,16 +10,7 @@ defmodule PlumaApi.MixProject do
       compilers: [:phoenix, :gettext] ++ Mix.compilers(),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps(),
-      releases: [
-        pluma_api: [
-          include_erts: true,
-          include_executables_for: [:unix],
-          applications: [
-            runtime_tools: :permanent
-          ]
-        ]
-      ]
+      deps: deps()
     ]
   end
 

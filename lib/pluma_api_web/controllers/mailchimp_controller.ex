@@ -45,6 +45,7 @@ defmodule PlumaApiWeb.MailchimpController do
     case Repo.insert(sub) do
       {:ok, subscriber} ->
         maybe_tag_parent(subscriber)
+        maybe_update_rid(subscriber)
 
         conn
         |> put_status(200)
@@ -56,6 +57,20 @@ defmodule PlumaApiWeb.MailchimpController do
     end
 
   end
+
+  defp maybe_update_rid(subscriber = %Subscriber{rid: nil}) do
+    rid = Nanoid.generate()
+    response = MailchimpRepo.update_merge_field(subscriber.email, @list_id, %{ "RID": rid })
+    case response do
+      {:ok, %HTTPoison.Response{status_code: 200}} ->
+        Subscriber.insert_changeset(subscriber, %{rid: rid})
+        |> Repo.update
+      other ->
+        {:error, other}
+    end
+  end
+
+  defp maybe_update_rid(_other), do: :ok
 
   defp maybe_tag_parent(child) do
     if not is_nil(child.parent_rid) do

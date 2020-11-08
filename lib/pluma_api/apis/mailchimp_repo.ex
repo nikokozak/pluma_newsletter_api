@@ -25,6 +25,15 @@ defmodule PlumaApi.MailchimpRepo do
     )
   end
 
+  def update_merge_field(email, list_id, merge_fields) when is_map(merge_fields) do
+    HTTPoison.patch(
+      @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
+      Jason.encode(%{merge_fields: merge_fields}),
+      [],
+      [hackney: @hackney_auth]
+    )
+  end
+
   def check_exists(email, list_id) do
     {:ok, result} = 
       HTTPoison.get(

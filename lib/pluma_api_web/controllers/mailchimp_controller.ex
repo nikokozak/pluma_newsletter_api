@@ -84,9 +84,13 @@ defmodule PlumaApiWeb.MailchimpController do
   end
 
   defp maybe_make_vip(parent) do
-    if length(parent.referees) == 3 do
-      {:ok, %HTTPoison.Response{ status_code: 204 }} = 
-        MailchimpRepo.tag_subscriber(parent.email, @list_id, [%{ name: "VIP", status: "active" }])
+    case Map.get(parent, :referees) do
+      nil -> :ok
+      other ->
+        if length(other) == 3 do
+          {:ok, %HTTPoison.Response{ status_code: 204 }} = 
+            MailchimpRepo.tag_subscriber(parent.email, @list_id, [%{ name: "VIP", status: "active" }])
+        end
     end
   end
   

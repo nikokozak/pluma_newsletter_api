@@ -1,6 +1,7 @@
 defmodule PlumaApi.MailchimpRepo do
   alias PlumaApi.Subscriber
   @api_key Keyword.get(Application.get_env(:pluma_api, :mailchimp), :api_key)
+  @list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
   @api_server Keyword.get(Application.get_env(:pluma_api, :mailchimp), :api_server)
   @mailosaur_server Keyword.get(Application.get_env(:pluma_api, :mailchimp), :mailosaur_server)
   @base_url "https://" <> @api_server <> ".api.mailchimp.com/3.0/"
@@ -75,6 +76,54 @@ defmodule PlumaApi.MailchimpRepo do
         {:ok, body}
       error ->
         {:error, error}
+    end
+  end
+
+  def normalize_database(skip_this_many_emails \\ 0) do
+    call = HTTPoison.get(
+      @base_url <> "lists/" <> @list_id <> "/members?" <> "count=1000" <> "&offset=#{skip_this_many_emails}" <> "&status=subscribed",
+      [],
+      [hackney: @hackney_auth]
+    )
+
+    case call do
+      {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
+        {:ok, body} = Jason.decode(body)
+        members = body["members"]
+        {num, _all} = PlumaApi.Repo.delete_all(Subscriber)
+        IO.inspect("Deleted #{num} entries")
+        add_members_to_db(members)
+      other ->
+        {:error, other}
+    end
+  end
+
+  def add_members_to_db(members) when is_list(members) do
+    add_member_to_db(members)
+  end
+
+  def add_member_to_db([]) do
+    IO.inspect("Successfully added all members")
+    :ok
+  end
+
+  def add_member_to_db([ member | rest ]) do
+    sub = Subscriber.insert_changeset(
+      %Subscriber{}, %{
+        email: member["email_address"],
+        rid: member["merge_fields"]["RID"],
+        parent_rid: member["merge_fields"]["PRID"],
+        list: @list_id,
+        mchimp_id: member["unique_email_id"]
+      })
+
+    case PlumaApi.Repo.insert(sub) do
+      {:ok, _sub} ->
+        add_member_to_db(rest)
+      other ->
+        IO.inspect("Something went wrong")
+        IO.inspect(other)
+        :error
     end
   end
 

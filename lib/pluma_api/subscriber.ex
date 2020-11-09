@@ -35,6 +35,7 @@ defmodule PlumaApi.Subscriber do
   defp changeset_with_allowed_params(subscriber, allowed_params, params \\ %{}) do
     subscriber
     |> cast(params, allowed_params)
+    |> unique_constraint(:email)
     |> validate_required([:email])
   end
 

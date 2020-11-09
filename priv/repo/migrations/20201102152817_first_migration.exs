@@ -16,5 +16,7 @@ defmodule PlumaApi.Repo.Migrations.FirstMigration do
 
     end
 
+    create unique_index(:subscribers, [:email])
+
   end
 end

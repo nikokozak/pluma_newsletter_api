@@ -164,7 +164,7 @@ defmodule PlumaApi.MailchimpRepo do
   Applies MD5 encoding to a string - this is necessary in order to pass the email
   as a parameter to the Mailchimp API.
   """
-  def hashify_email(email), do: :crypto.hash(:md5, email) |> Base.encode16 |> String.downcase
+  def hashify_email(email), do: :crypto.hash(:md5, String.downcase(email)) |> Base.encode16 |> String.downcase
 
   @doc """
   Generates a random email address for use with the Mailosaur testing framework.

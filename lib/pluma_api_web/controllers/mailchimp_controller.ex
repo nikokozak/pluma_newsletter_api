@@ -67,9 +67,12 @@ defmodule PlumaApiWeb.MailchimpController do
     response = MailchimpRepo.update_merge_field(subscriber.email, @list_id, %{ "RID": rid })
     case response do
       {:ok, %HTTPoison.Response{status_code: 200}} ->
+        IO.inspect("Updated RID field for #{subscriber.email}")
         Subscriber.insert_changeset(subscriber, %{rid: rid})
         |> Repo.update
       other ->
+        IO.inspect("There was an error updating RID field for #{subscriber.email}")
+        IO.inspect(other)
         {:error, other}
     end
   end

@@ -196,11 +196,4 @@ defmodule PlumaApi.MailchimpRepo do
   """
   def hashify_email(email), do: :crypto.hash(:md5, String.downcase(email)) |> Base.encode16 |> String.downcase
 
-  @doc """
-  Generates a random email address for use with the Mailosaur testing framework.
-  """
-  def generate_testing_email do
-    Faker.Internet.slug() <> "." <> @mailosaur_server <> "@mailosaur.io"
-  end
-
 end

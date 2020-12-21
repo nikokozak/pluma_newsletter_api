@@ -3,7 +3,6 @@ defmodule PlumaApi.MailchimpRepo do
   @api_key Keyword.get(Application.get_env(:pluma_api, :mailchimp), :api_key)
   @list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
   @api_server Keyword.get(Application.get_env(:pluma_api, :mailchimp), :api_server)
-  @mailosaur_server Keyword.get(Application.get_env(:pluma_api, :mailchimp), :mailosaur_server)
   @base_url "https://" <> @api_server <> ".api.mailchimp.com/3.0/"
   @hackney_auth [basic_auth: {"plumachile", @api_key}]
 

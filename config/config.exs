@@ -39,9 +39,6 @@ config :pluma_api, :mailchimp,
   premium_list: "premium",
   api_key: "d653f0705d495611865bc7ca6de63515-us2",
   api_server: "us2",
-  mailosaur_server: "uoueuw4o",
-  mailosaur_api_key: "eGdHsGtsJDRrfp1",
-  transactional_api_key: "hFgDYX00lAioKnUSOELCDw"
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

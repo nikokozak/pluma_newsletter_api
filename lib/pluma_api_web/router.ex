@@ -15,6 +15,7 @@ defmodule PlumaApiWeb.Router do
     get "/test_me", TestController, :test_get
     post "/test_me", TestController, :test_post
 
+    # params are passed via the url -> ?email=nikokozak@gmail.com
     get "/subscriber", SubscriberController, :subscriber_details
     #post "/subscriber", SubscriberController, :subscribe
     #post "/subscriber/confirm", SubscriberController, :confirm_subscriber

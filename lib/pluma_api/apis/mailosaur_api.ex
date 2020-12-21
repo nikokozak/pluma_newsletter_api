@@ -5,12 +5,17 @@ defmodule PlumaApi.MailosaurAPI do
 
   @hackney_auth [basic_auth: {@api_key, ""}]
 
-  def check_health() do
+  @moduledoc """
+  **DEPREPCATED** -> No longer using Transactional API.
 
-  end
+  Provides one function, used in testing, to make sure Transactional API is doing
+  what we want it to do. 
+  """
+
 
   @doc """
   As per the mailosaur api - %{sentFrom: xxx, sentTo: xxx, subject: xxx, body: xxx, match: ALL/ANY}
+  Checks whether a given message is present in the Mailosaur inbox.
   """
   def find_message(params) do
     HTTPoison.post(

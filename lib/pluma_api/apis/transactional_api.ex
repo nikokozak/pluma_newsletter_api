@@ -1,9 +1,18 @@
 defmodule PlumaApi.TransactionalAPI do
   @api_key Keyword.get(Application.get_env(:pluma_api, :mailchimp), :transactional_api_key)
   @base_url "https://mandrillapp.com/api/1.0/"
-
   @hackney_auth [basic_auth: {"plumachile", @api_key}]
 
+  @moduledoc """
+  **DEPREPCATED** -> We are no longer using the Mailchimp Transactional API.
+
+  Provides a set of simple functions through which the Mailchimp Transactional API
+  can be used. 
+  """
+
+  @doc """
+  Check the Mailchimp Transactional API is responding. Returns a raw HTTPoison response.
+  """
   def check_health() do
     HTTPoison.post(
       @base_url <> "users/ping",
@@ -13,6 +22,9 @@ defmodule PlumaApi.TransactionalAPI do
     ) 
   end
 
+  @doc """
+  Sends a welcome email using the Transactional API, and the `welcome` email template. 
+  """
   def send_welcome_email(to) do
     content = %{
       key: @api_key,
@@ -28,6 +40,10 @@ defmodule PlumaApi.TransactionalAPI do
     send_template(content)
   end
 
+  @doc """
+  Sends an unsubscribed notice email using the TransactionalAPI, and the 
+  `unsubscribe` email template.
+  """
   def send_unsubscribe_email(to) do
     content = %{
       key: @api_key,
@@ -43,6 +59,9 @@ defmodule PlumaApi.TransactionalAPI do
     send_template(content)
   end
 
+  @doc """
+  Makes a custom message using the TransactionalAPI.
+  """
   def make_message(from, to, subject, body) do
     %{
       from_email: from,
@@ -57,6 +76,9 @@ defmodule PlumaApi.TransactionalAPI do
     }
   end 
 
+  @doc """
+  Sends a custom message created via `make_message` using the TransactionalAPI.
+  """
   def send_email(message) do
     email = %{
       key: @api_key,
@@ -71,6 +93,9 @@ defmodule PlumaApi.TransactionalAPI do
     )
   end
 
+  @doc """
+  Sends some custom content encoded into a template, using the TransactionalAPI.
+  """
   def send_template(content) do
     HTTPoison.post(
       @base_url <> "messages/send-template",

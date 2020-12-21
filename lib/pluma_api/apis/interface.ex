@@ -2,9 +2,25 @@ defmodule PlumaApi.Interface do
   alias PlumaApi.{MailchimpRepo, Subscriber, TransactionalAPI, Repo}
   @mailchimp_list Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
 
+  @moduledoc """
+  **DEPREPCATED** -> we are no longer using the Mailchimp TransactionalAPI, nor are we
+  handling subscription/unsubscription from the API. Before reactivating this module,
+  make sure to add rollback functionalities for the different steps in the Multi flows.
+
+  Interface has two publically accessible methods - `subscribe` and `unsubscribe`.
+
+  Each compiles a series of functions from the `MailchimpRepo`, `Subscriber`, and
+  `TransactionalAPI` modules in order to handle the entire subscription and unsubscription
+  flow for subscribers.
+
+  `subscribe` and `unsubscribe` both rely on the `Ecto.Multi` paradigm to operate. 
+  """
+
   @doc """
-  A method for handling a parent's referral should also go in this Multi - i.e.
-  what action do we take if a parent has reached 3 referrals?
+  Handles, using an Ecto Multi, the transactions necessary to add a new subscriber 
+  (checking the new sub is not already present) to both the application database 
+  and the external Mailchimp audience list. Will also send out a welcome email
+  if the previous operations are succesful.
   """
   def subscribe(email, parent_rid) do
     subscriber = Subscriber.make(email, parent_rid)
@@ -19,6 +35,11 @@ defmodule PlumaApi.Interface do
     Repo.transaction(multi)
   end
 
+  @doc """
+  Handles, using an Ecto Multi, the transactions necessary to unsubscribe a subscriber
+  from the external Mailchimp audience, as well as the internal datbase. Sends out a
+  unsubscribed email if all previous operations are succesful. 
+  """
   def unsubscribe(email) do
     multi =
       Ecto.Multi.new

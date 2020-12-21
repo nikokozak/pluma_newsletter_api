@@ -13,7 +13,6 @@ defmodule PlumaApiWeb.MailchimpController do
   end
 
   def handle_event(conn, params = %{"type" => "unsubscribe"}) do
-
     sub = Subscriber.with_email(params["data"]["email"]) 
           |> Repo.one
 
@@ -27,11 +26,9 @@ defmodule PlumaApiWeb.MailchimpController do
         |> put_status(500)
         |> json(%{ status: "error", detail: other })
     end
-
   end
 
   def handle_event(conn, params = %{"type" => "subscribe"}) do
-
     sub_data = params["data"]
     merge_fields = sub_data["merges"]
     sub = Subscriber.insert_changeset(%Subscriber{}, %{

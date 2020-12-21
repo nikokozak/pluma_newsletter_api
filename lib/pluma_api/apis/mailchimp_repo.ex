@@ -5,9 +5,30 @@ defmodule PlumaApi.MailchimpRepo do
   @api_server Keyword.get(Application.get_env(:pluma_api, :mailchimp), :api_server)
   @mailosaur_server Keyword.get(Application.get_env(:pluma_api, :mailchimp), :mailosaur_server)
   @base_url "https://" <> @api_server <> ".api.mailchimp.com/3.0/"
-
   @hackney_auth [basic_auth: {"plumachile", @api_key}]
 
+  @moduledoc """
+  A set of functions for interacting with the Mailchimp API. The `list_id`, which
+  is necessary for most of these functions, refers to the specific audience list we
+  wish to work with, and can be found in the `main_list_id` variable of the `config.exs`
+  file.
+  """
+
+  @doc """
+  Checks to see if the Mailchimp API is responding.
+  """
+  def check_health() do
+    HTTPoison.get(
+      @base_url <> "ping",
+      [],
+      [hackney: @hackney_auth]
+    )
+  end
+
+  @doc """
+  Adds a given `Subscriber` to the mailchimp audience. If `test` parameter is passed as "true",
+  then the `Subscriber` is assigned a "Test" tag in the audience, making it easy to remove them.
+  """
   def add_to_audience(subscriber = %Subscriber{}, list_id, test \\ false) do
     HTTPoison.post(
       @base_url <> "lists/" <> list_id <> "/members",
@@ -17,6 +38,9 @@ defmodule PlumaApi.MailchimpRepo do
     )
   end
 
+  @doc """
+  Adds tags to a given subscriber in a Mailchimp audience.
+  """
   def tag_subscriber(email, list_id, tags) when is_list(tags) do
     HTTPoison.post(
       @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email) <> "/tags",
@@ -26,6 +50,9 @@ defmodule PlumaApi.MailchimpRepo do
     )
   end
 
+  @doc """
+  Updates a set of Merge Fields (custom mailchimp subscriber fields) for a given subscriber.
+  """
   def update_merge_field(email, list_id, merge_fields) when is_map(merge_fields) do
     response = HTTPoison.patch(
       @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
@@ -37,6 +64,9 @@ defmodule PlumaApi.MailchimpRepo do
     IO.inspect(response)
   end
 
+  @doc """
+  Check whether a given email exists in the provided list.
+  """
   def check_exists(email, list_id) do
     {:ok, result} = 
       HTTPoison.get(
@@ -51,6 +81,9 @@ defmodule PlumaApi.MailchimpRepo do
     end
   end
 
+  @doc """
+  Remove a subscriber from a given Mailchimp audience list.
+  """ 
   def archive_subscriber(email, list_id) do
     {:ok, result} =
       HTTPoison.delete(
@@ -65,6 +98,9 @@ defmodule PlumaApi.MailchimpRepo do
     end
   end
 
+  @doc """
+  Get the details for a given email address if present in a Mailchimp audience.
+  """
   def get_subscriber(email, list_id) do
     {:ok, result} =
       HTTPoison.get(
@@ -81,6 +117,11 @@ defmodule PlumaApi.MailchimpRepo do
     end
   end
 
+  @doc """
+  WARNING - retrieves up to 1000 subscribers from the main Mailchimp list, 
+  wipes out the local database, and recursively re-populates the local database
+  with Mailchimp information. 
+  """
   def normalize_database(skip_this_many_emails \\ 0) do
     call = HTTPoison.get(
       @base_url <> "lists/" <> @list_id <> "/members?" <> "count=1000" <> "&offset=#{skip_this_many_emails}" <> "&status=subscribed",
@@ -100,16 +141,14 @@ defmodule PlumaApi.MailchimpRepo do
     end
   end
 
-  def add_members_to_db(members) when is_list(members) do
-    add_member_to_db(members)
-  end
+  defp add_members_to_db(members) when is_list(members), do: add_member_to_db(members)
 
-  def add_member_to_db([]) do
+  defp add_member_to_db([]) do
     IO.inspect("Successfully added all members")
     :ok
   end
 
-  def add_member_to_db([ member | rest ]) do
+  defp add_member_to_db([ member | rest ]) do
     sub = Subscriber.insert_changeset(
       %Subscriber{}, %{
         email: member["email_address"],
@@ -127,14 +166,6 @@ defmodule PlumaApi.MailchimpRepo do
         IO.inspect(other)
         :error
     end
-  end
-
-  def check_health() do
-    HTTPoison.get(
-      @base_url <> "ping",
-      [],
-      [hackney: @hackney_auth]
-    )
   end
 
   defp encode(sub = %Subscriber{}, false) do

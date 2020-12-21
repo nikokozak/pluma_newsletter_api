@@ -4,24 +4,24 @@ defmodule PlumaApiWeb.SubscriberController do
   alias PlumaApi.{Subscriber, Repo, Interface}
 
   def subscriber_details(conn, _params = %{"email" => email}) do
-    subscriber = Subscriber.with_email(email)
+    subscriber_query = Subscriber.with_email(email)
                  |> Subscriber.preload_referees
     
-    handle_get_subscriber(conn, subscriber)
+    handle_get_subscriber(conn, subscriber_query)
   end
 
   def subscriber_details(conn, _params = %{"id" => id}) do
-    subscriber = Subscriber.with_id(id)
+    subscriber_query = Subscriber.with_id(id)
                  |> Subscriber.preload_referees
 
-    handle_get_subscriber(conn, subscriber)
+    handle_get_subscriber(conn, subscriber_query)
   end
 
   def subscriber_details(conn, _params = %{"rid" => rid}) do
-    subscriber = Subscriber.with_rid(rid)
+    subscriber_query = Subscriber.with_rid(rid)
                  |> Subscriber.preload_referees()
 
-    handle_get_subscriber(conn, subscriber)
+    handle_get_subscriber(conn, subscriber_query)
   end
 
   defp handle_get_subscriber(conn, subscriber_query) do

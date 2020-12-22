@@ -14,8 +14,9 @@ defmodule PlumaApiWeb.MailchimpController do
   end
 
   @doc """
-  Handles "subscribe" Mailchimp events. If the subscriber has no RID (as in subscribers
-  added via the admin panel), an RID is generated and the Mailchimp subscriber is updated.
+  Handles 'subscribe' and 'unsubscribe' Mailchimp events via parameter overrides. If the subscriber 
+  has no RID (as in subscribers added via the admin panel), an RID is generated and the Mailchimp 
+  subscriber is updated.
 
   Returns 200 for success otherwise 202 (necessary otherwise Mailchimp will keep trying).
   """
@@ -52,9 +53,6 @@ defmodule PlumaApiWeb.MailchimpController do
     end
   end
 
-  @doc """
-  Handles "unsubscribe" Mailchimp events. Deletes the given subscriber from the database.
-  """
   def handle_event(conn, params = %{"type" => "unsubscribe"}) do
     sub = Subscriber.with_email(params["data"]["email"]) 
           |> Repo.one

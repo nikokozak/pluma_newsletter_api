@@ -12,22 +12,6 @@ defmodule PlumaApiWeb.MailchimpController do
     |> json("OK")
   end
 
-  def handle_event(conn, params = %{"type" => "unsubscribe"}) do
-    sub = Subscriber.with_email(params["data"]["email"]) 
-          |> Repo.one
-
-    case Repo.delete(sub) do
-      {:ok, deleted} ->
-        conn
-        |> put_status(200)
-        |> json(%{ status: "deleted", email: deleted.email })
-      other ->
-        conn
-        |> put_status(500)
-        |> json(%{ status: "error", detail: other })
-    end
-  end
-
   def handle_event(conn, params = %{"type" => "subscribe"}) do
     sub_data = params["data"]
     merge_fields = sub_data["merges"]
@@ -49,11 +33,27 @@ defmodule PlumaApiWeb.MailchimpController do
         |> json(%{ status: "created", email: subscriber.email })
       {:error, error} ->
         conn
-        |> put_status(500)
+        |> put_status(202)
         |> json(%{ status: "error", detail: error })
     end
-
   end
+
+  def handle_event(conn, params = %{"type" => "unsubscribe"}) do
+    sub = Subscriber.with_email(params["data"]["email"]) 
+          |> Repo.one
+
+    case Repo.delete(sub) do
+      {:ok, deleted} ->
+        conn
+        |> put_status(200)
+        |> json(%{ status: "deleted", email: deleted.email })
+      other ->
+        conn
+        |> put_status(202)
+        |> json(%{ status: "error", detail: other })
+    end
+  end
+
 
   defp maybe_update_rid(subscriber = %Subscriber{rid: ""}) do
     maybe_update_rid(%{ subscriber | rid: nil })
@@ -77,7 +77,7 @@ defmodule PlumaApiWeb.MailchimpController do
   defp maybe_update_rid(_other), do: :ok
 
   defp maybe_tag_parent(child) do
-    if not is_nil(child.parent_rid) do
+    if has_parent_rid(child) do
       parent = 
         Subscriber.with_rid(child.parent_rid)
         |> Subscriber.preload_referees
@@ -97,6 +97,13 @@ defmodule PlumaApiWeb.MailchimpController do
         end
     end
   end
-  
+
+  defp has_parent_rid(child) do
+    if not is_nil(child.parent_rid) and String.length(child.parent_rid) != 0 do
+      true
+    else
+      false
+    end
+  end
   
 end

@@ -48,54 +48,6 @@ defmodule PlumaApiWeb.MailchimpControllerTest do
     assert subscriber.rid == call["data"]["merges"]["RID"]
   end
 
-  @tag :skip
-  test "MailchimpController.handle_event: subscribe, no RID", %{ conn: conn }do
-    call = make_subscribe_call(Faker.Internet.email(), Nanoid.generate())
-
-    conn = post(conn, Routes.mailchimp_path(conn, :handle_event), call)
-
-    assert json_response(conn, 200)
-
-    subscriber = 
-      Subscriber.with_email(call["data"]["email"])
-      |> Repo.one
-
-    assert not is_nil(subscriber)
-    assert subscriber.rid == call["data"]["merges"]["RID"]
-  end
-
-  @tag :skip
-  test "MailchimpController.handle_event: subscribe, parentRID", %{ conn: conn }do
-    call = make_subscribe_call(Faker.Internet.email(), Nanoid.generate())
-
-    conn = post(conn, Routes.mailchimp_path(conn, :handle_event), call)
-
-    assert json_response(conn, 200)
-
-    subscriber = 
-      Subscriber.with_email(call["data"]["email"])
-      |> Repo.one
-
-    assert not is_nil(subscriber)
-    assert subscriber.rid == call["data"]["merges"]["RID"]
-  end
-
-  @tag :skip
-  test "MailchimpController.handle_event: subscribe, duplicate RID", %{ conn: conn }do
-    call = make_subscribe_call(Faker.Internet.email(), Nanoid.generate())
-
-    conn = post(conn, Routes.mailchimp_path(conn, :handle_event), call)
-
-    assert json_response(conn, 200)
-
-    subscriber = 
-      Subscriber.with_email(call["data"]["email"])
-      |> Repo.one
-
-    assert not is_nil(subscriber)
-    assert subscriber.rid == call["data"]["merges"]["RID"]
-  end
-
   test "MailchimpController.handle_event: unsubscribe, good data", %{ conn: conn } do
     {:ok, subscriber} =
       Subscriber.insert_changeset(%Subscriber{}, %{

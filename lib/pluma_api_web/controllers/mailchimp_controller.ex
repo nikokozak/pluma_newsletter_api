@@ -48,7 +48,7 @@ defmodule PlumaApiWeb.MailchimpController do
 
         conn
         |> put_status(202)
-        |> json(%{ status: "error", detail: error })
+        |> json(%{ status: "error", detail: inspect(error) })
     end
   end
 
@@ -60,18 +60,19 @@ defmodule PlumaApiWeb.MailchimpController do
           |> Repo.one
 
     Logger.info("New unsubscribe event received: #{Map.get(sub, :email)}")
+    Logger.info("Attempting to delete #{inspect(sub)}")
     case Repo.delete(sub) do
       {:ok, deleted} ->
         Logger.info("Successfully deleted #{Map.get(sub, :email)} from database.")
         conn
         |> put_status(200)
         |> json(%{ status: "deleted", email: deleted.email })
-      other ->
+      {:error, changeset} ->
         Logger.warn("There was an error attempting to delete #{Map.get(sub, :email)} from the database.")
-        IO.inspect(other)
+        IO.inspect(changeset)
         conn
         |> put_status(202)
-        |> json(%{ status: "error", detail: other })
+        |> json(%{ status: "error", detail: inspect(changeset) })
     end
   end
 

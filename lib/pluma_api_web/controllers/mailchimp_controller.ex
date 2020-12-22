@@ -1,4 +1,5 @@
 defmodule PlumaApiWeb.MailchimpController do
+  require Logger
   use PlumaApiWeb, :controller
   alias PlumaApi.Subscriber
   alias PlumaApi.Repo
@@ -12,6 +13,12 @@ defmodule PlumaApiWeb.MailchimpController do
     |> json("OK")
   end
 
+  @doc """
+  Handles "subscribe" Mailchimp events. If the subscriber has no RID (as in subscribers
+  added via the admin panel), an RID is generated and the Mailchimp subscriber is updated.
+
+  Returns 200 for success otherwise 202 (necessary otherwise Mailchimp will keep trying).
+  """
   def handle_event(conn, params = %{"type" => "subscribe"}) do
     sub_data = params["data"]
     merge_fields = sub_data["merges"]
@@ -23,58 +30,74 @@ defmodule PlumaApiWeb.MailchimpController do
         list: sub_data["list_id"]
     })
 
+    Logger.info("New subscriber received: #{sub_data["email"]}")
+    Logger.info("Attempting to insert #{sub_data["email"]} into DB")
+
     case Repo.insert(sub) do
       {:ok, subscriber} ->
         maybe_update_rid(subscriber)
         maybe_tag_parent(subscriber)
-
+        
+        Logger.info("All operations completed successfully for #{Map.get(subscriber, :email)}")
         conn
         |> put_status(200)
         |> json(%{ status: "created", email: subscriber.email })
       {:error, error} ->
+        Logger.warn("Something went wrong while trying to insert the new subscriber - likely a duplicate email")
+        IO.inspect(error)
+
         conn
         |> put_status(202)
         |> json(%{ status: "error", detail: error })
     end
   end
 
+  @doc """
+  Handles "unsubscribe" Mailchimp events. Deletes the given subscriber from the database.
+  """
   def handle_event(conn, params = %{"type" => "unsubscribe"}) do
     sub = Subscriber.with_email(params["data"]["email"]) 
           |> Repo.one
 
+    Logger.info("New unsubscribe event received: #{Map.get(sub, :email)}")
     case Repo.delete(sub) do
       {:ok, deleted} ->
+        Logger.info("Successfully deleted #{Map.get(sub, :email)} from database.")
         conn
         |> put_status(200)
         |> json(%{ status: "deleted", email: deleted.email })
       other ->
+        Logger.warn("There was an error attempting to delete #{Map.get(sub, :email)} from the database.")
+        IO.inspect(other)
         conn
         |> put_status(202)
         |> json(%{ status: "error", detail: other })
     end
   end
 
-
   defp maybe_update_rid(subscriber = %Subscriber{rid: ""}) do
     maybe_update_rid(%{ subscriber | rid: nil })
   end
 
   defp maybe_update_rid(subscriber = %Subscriber{rid: nil}) do
+    Logger.info("Now attempting to update RID for #{Map.get(subscriber, :email)}")
     rid = Nanoid.generate()
     response = MailchimpRepo.update_merge_field(subscriber.email, @list_id, %{ "RID": rid })
     case response do
       {:ok, %HTTPoison.Response{status_code: 200}} ->
-        IO.inspect("Updated RID field for #{subscriber.email}")
+        Logger.info("Updated RID field for #{Map.get(subscriber, :email)} in Mailchimp successfully")
         Subscriber.insert_changeset(subscriber, %{rid: rid})
         |> Repo.update
       other ->
-        IO.inspect("There was an error updating RID field for #{subscriber.email}")
+        Logger.warn("There was an error remotely updating RID field for #{Map.get(subscriber, :email)}")
         IO.inspect(other)
-        {:error, other}
     end
   end
 
-  defp maybe_update_rid(_other), do: :ok
+  defp maybe_update_rid(_other) do 
+    Logger.info("No RID update required.")
+    :ok
+  end
 
   defp maybe_tag_parent(child) do
     if has_parent_rid(child) do
@@ -88,12 +111,14 @@ defmodule PlumaApiWeb.MailchimpController do
   end
 
   defp maybe_make_vip(parent) do
+    Logger.info("Now checking if parent has enough children for VIP clasification")
     case Map.get(parent, :referees) do
       nil -> :ok
       other ->
         if length(other) == 3 do
           {:ok, %HTTPoison.Response{ status_code: 204 }} = 
             MailchimpRepo.tag_subscriber(parent.email, @list_id, [%{ name: "VIP", status: "active" }])
+          Logger.info("Successfully tagged parent as VIP")
         end
     end
   end

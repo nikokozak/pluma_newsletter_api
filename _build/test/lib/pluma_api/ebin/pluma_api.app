@@ -23,8 +23,7 @@
                         'Elixir.PlumaApiWeb.SubscriberController',
                         'Elixir.PlumaApiWeb.SubscriberView',
                         'Elixir.PlumaApiWeb.Telemetry',
-                        'Elixir.PlumaApiWeb.TestController',
-                        'Elixir.PlumaApiWeb.UserSocket']},
+                        'Elixir.PlumaApiWeb.TestController']},
               {registered,[]},
               {vsn,"0.1.0"},
               {mod,{'Elixir.PlumaApi.Application',[]}}]}.

@@ -1,12 +1,5 @@
 defmodule Phoenix.LiveView.Socket.AssignsNotInSocket do
-  @moduledoc """
-  Struct for socket.assigns while rendering.
-
-  The socket assigns are available directly inside the template
-  as LiveEEx `assigns`, such as `@foo` and `@bar`. Any assign access
-  should be done using the assigns in the template where proper change
-  tracking takes place.
-  """
+  @moduledoc false
 
   defimpl Inspect do
     def inspect(_, _) do
@@ -21,8 +14,14 @@ end
 defmodule Phoenix.LiveView.Socket do
   @moduledoc """
   The LiveView socket for Phoenix Endpoints.
+
+  This is typically mounted directly in your endpoint.
+
+      socket "/live", Phoenix.LiveView.Socket
+
   """
   use Phoenix.Socket
+
   require Logger
 
   if Version.match?(System.version(), ">= 1.8.0") do
@@ -39,7 +38,7 @@ defmodule Phoenix.LiveView.Socket do
             router: nil,
             assigns: %{},
             changed: %{},
-            private: %{},
+            private: %{changed: %{}},
             fingerprints: Phoenix.LiveView.Diff.new_fingerprints(),
             redirected: nil,
             host_uri: nil,
@@ -49,35 +48,30 @@ defmodule Phoenix.LiveView.Socket do
   @type fingerprints :: {nil, map} | {binary, map}
 
   @type t :: %__MODULE__{
-    id: binary(),
-    endpoint: module(),
-    view: module(),
-    root_view: module(),
-    parent_pid: nil | pid(),
-    root_pid: pid(),
-    router: module(),
-    assigns: assigns,
-    changed: map(),
-    private: map(),
-    fingerprints: fingerprints,
-    redirected: nil | tuple(),
-    host_uri: URI.t(),
-    connected?: boolean()
-  }
+          id: binary(),
+          endpoint: module(),
+          view: module(),
+          root_view: module(),
+          parent_pid: nil | pid(),
+          root_pid: pid(),
+          router: module(),
+          assigns: assigns,
+          changed: map(),
+          private: map(),
+          fingerprints: fingerprints,
+          redirected: nil | tuple(),
+          host_uri: URI.t(),
+          connected?: boolean()
+        }
 
+  channel "lvu:*", Phoenix.LiveView.UploadChannel
   channel "lv:*", Phoenix.LiveView.Channel
 
-  @doc """
-  Connects the Phoenix.Socket for a LiveView client.
-  """
   @impl Phoenix.Socket
   def connect(_params, %Phoenix.Socket{} = socket, connect_info) do
     {:ok, put_in(socket.private[:connect_info], connect_info)}
   end
 
-  @doc """
-  Identifies the Phoenix.Socket for a LiveView client.
-  """
   @impl Phoenix.Socket
   def id(socket), do: socket.private.connect_info[:session]["live_socket_id"]
 end

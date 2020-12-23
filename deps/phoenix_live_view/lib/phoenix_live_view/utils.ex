@@ -3,8 +3,7 @@ defmodule Phoenix.LiveView.Utils do
   # but also Static, and LiveViewTest.
   @moduledoc false
 
-  alias Phoenix.LiveView.Rendered
-  alias Phoenix.LiveView.Socket
+  alias Phoenix.LiveView.{Rendered, Socket}
 
   # All available mount options
   @mount_opts [:temporary_assigns, :layout]
@@ -40,7 +39,13 @@ defmodule Phoenix.LiveView.Utils do
   """
   def clear_changed(%Socket{private: private, assigns: assigns} = socket) do
     temporary = Map.get(private, :temporary_assigns, %{})
-    %Socket{socket | changed: %{}, assigns: Map.merge(assigns, temporary)}
+
+    %Socket{
+      socket
+      | changed: %{},
+        assigns: Map.merge(assigns, temporary),
+        private: Map.put(private, :changed, %{})
+    }
   end
 
   @doc """
@@ -62,18 +67,18 @@ defmodule Phoenix.LiveView.Utils do
       socket
       | id: random_id(),
         private: private,
-        assigns: configure_assigns(socket.assigns, socket.view, action, flash),
+        assigns: configure_assigns(socket.assigns, action, flash),
         host_uri: prune_uri(host_uri)
     }
   end
 
   def configure_socket(%Socket{} = socket, private, action, flash, host_uri) do
-    assigns = configure_assigns(socket.assigns, socket.view, action, flash)
+    assigns = configure_assigns(socket.assigns, action, flash)
     %{socket | host_uri: prune_uri(host_uri), private: private, assigns: assigns}
   end
 
-  defp configure_assigns(assigns, view, action, flash) do
-    Map.merge(assigns, %{live_module: view, live_action: action, flash: flash})
+  defp configure_assigns(assigns, action, flash) do
+    Map.merge(assigns, %{live_action: action, flash: flash})
   end
 
   defp prune_uri(:not_mounted_at_router), do: :not_mounted_at_router
@@ -175,9 +180,8 @@ defmodule Phoenix.LiveView.Utils do
     key = flash_key(key)
     new_flash = Map.delete(socket.assigns.flash, key)
 
-    socket
-    |> assign(:flash, new_flash)
-    |> update_changed({:private, :flash}, &Map.delete(&1 || %{}, key))
+    socket = assign(socket, :flash, new_flash)
+    update_in(socket.private.changed[:flash], &Map.delete(&1 || %{}, key))
   end
 
   @doc """
@@ -187,16 +191,15 @@ defmodule Phoenix.LiveView.Utils do
     key = flash_key(key)
     new_flash = Map.put(assigns.flash, key, msg)
 
-    socket
-    |> assign(:flash, new_flash)
-    |> update_changed({:private, :flash}, &Map.put(&1 || %{}, key, msg))
+    socket = assign(socket, :flash, new_flash)
+    update_in(socket.private.changed[:flash], &Map.put(&1 || %{}, key, msg))
   end
 
   @doc """
   Returns a map of the flash messages which have changed.
   """
   def changed_flash(%Socket{} = socket) do
-    socket.changed[{:private, :flash}] || %{}
+    socket.private.changed[:flash] || %{}
   end
 
   defp flash_key(binary) when is_binary(binary), do: binary
@@ -204,51 +207,57 @@ defmodule Phoenix.LiveView.Utils do
 
   @doc """
   Annotates the changes with the event to be pushed.
+
+  Events are dispatched on the JavaScript side only after
+  the current patch is invoked. Therefore, if the LiveView
+  redirects, the events won't be invoked.
   """
   def push_event(%Socket{} = socket, event, %{} = payload) do
-    update_changed(socket, {:private, :push_events}, &[[event, payload] | &1 || []])
+    update_in(socket.private.changed[:push_events], &[[event, payload] | &1 || []])
   end
 
   @doc """
   Annotates the reply in the socket changes.
   """
   def put_reply(%Socket{} = socket, %{} = payload) do
-    update_changed(socket, {:private, :push_reply}, fn _ -> payload end)
+    put_in(socket.private.changed[:push_reply], payload)
   end
 
   @doc """
   Returns the push events in the socket.
   """
   def get_push_events(%Socket{} = socket) do
-    Enum.reverse(socket.changed[{:private, :push_events}] || [])
+    Enum.reverse(socket.private.changed[:push_events] || [])
   end
 
   @doc """
   Returns the reply in the socket.
   """
   def get_reply(%Socket{} = socket) do
-    socket.changed[{:private, :push_reply}]
-  end
-
-  defp update_changed(%Socket{} = socket, key, func) do
-    update_in(socket.changed[key], func)
+    socket.private.changed[:push_reply]
   end
 
   @doc """
   Returns the configured signing salt for the endpoint.
   """
   def salt!(endpoint) when is_atom(endpoint) do
-    endpoint.config(:live_view)[:signing_salt] ||
-      raise ArgumentError, """
-      no signing salt found for #{inspect(endpoint)}.
+    salt = endpoint.config(:live_view)[:signing_salt]
 
-      Add the following LiveView configuration to your config/config.exs:
+    if is_binary(salt) and byte_size(salt) >= 8 do
+      salt
+    else
+      raise ArgumentError, """
+      the signing salt for #{inspect(endpoint)} is missing or too short.
+
+      Add the following LiveView configuration to your config/runtime.exs
+      or config/config.exs:
 
           config :my_app, MyAppWeb.Endpoint,
               ...,
               live_view: [signing_salt: "#{random_encoded_bytes()}"]
 
       """
+    end
   end
 
   @doc """
@@ -264,8 +273,7 @@ defmodule Phoenix.LiveView.Utils do
     %URI{host: host, path: path, query: query} = parsed_uri = URI.parse(uri)
     host = host || socket.host_uri.host
     query_params = if query, do: Plug.Conn.Query.decode(query), else: %{}
-    decoded_path = URI.decode(path || "")
-    split_path = for segment <- String.split(decoded_path, "/"), segment != "", do: segment
+    split_path = for segment <- String.split(path || "", "/"), segment != "", do: URI.decode(segment)
     route_path = strip_segments(endpoint.script_name(), split_path) || split_path
 
     case Phoenix.Router.route_info(router, "GET", route_path, host) do

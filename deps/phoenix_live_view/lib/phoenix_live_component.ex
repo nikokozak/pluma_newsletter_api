@@ -297,10 +297,10 @@ defmodule Phoenix.LiveComponent do
         New entry: <%= @entry %>
       <% end %>
 
-  The `do/end` will be available as an anonymous function in an assign named
-  `@inner_content`. The anonymous function must be invoked passing a new set
-  of assigns that will be merged into the user assigns. For example, the grid
-  component above could be implemented as:
+  The `do/end` will be available in an assign named `@inner_block`.
+  You can render its contents by calling `render_block` with the
+  assign itself and a keyword list of assigns to inject into the rendered
+  content. For example, the grid component above could be implemented as:
 
       defmodule GridComponent do
         use Phoenix.LiveComponent
@@ -310,7 +310,7 @@ defmodule Phoenix.LiveComponent do
           <div class="grid">
             <%= for entry <- @entries do %>
               <div class="column">
-                <%= @inner_content.(entry: entry) %>
+                <%= render_block(@inner_block, entry: entry) %>
               </div>
             <% end %>
           </div>
@@ -320,12 +320,12 @@ defmodule Phoenix.LiveComponent do
 
   Where the `:entry` assign was injected into the `do/end` block.
 
-  Note the `@inner_content` assign is also passed to `c:update/2`
+  Note the `@inner_block` assign is also passed to `c:update/2`
   along all other assigns. So if you have a custom `update/2`
   implementation, make sure to assign it to the socket like so:
 
-      def update(%{inner_content: inner_content}, socket) do
-        {:ok, assign(socket, inner_content: inner_content)}
+      def update(%{inner_block: inner_block}, socket) do
+        {:ok, assign(socket, inner_block: inner_block)}
       end
 
   The above approach is the preferred one when passing blocks to `do/end`.
@@ -352,7 +352,7 @@ defmodule Phoenix.LiveComponent do
   LiveViews themselves.
 
   Therefore it is your responsibility to keep only the assigns necessary
-  in each component. For example, avoid passing all of LiveView components
+  in each component. For example, avoid passing all of LiveView's assigns
   when rendering a component:
 
       <%= live_component @socket, MyComponent, assigns %>
@@ -366,7 +366,7 @@ defmodule Phoenix.LiveComponent do
   the view and the component will share the same copies of the `@user`
   and `@org` assigns.
 
-  You should also avoid using components to provide abstract DOM
+  You should also avoid using stateful components to provide abstract DOM
   components. As a guideline, a good LiveComponent encapsulates
   application concerns and not DOM functionality. For example, if you
   have a page that shows products for sale, you can encapsulate the
@@ -375,7 +375,7 @@ defmodule Phoenix.LiveComponent do
   do not write a component that is simply encapsulating generic DOM
   components. For instance, do not do this:
 
-      defmodule MyButton
+      defmodule MyButton do
         use Phoenix.LiveComponent
 
         def render(assigns) do

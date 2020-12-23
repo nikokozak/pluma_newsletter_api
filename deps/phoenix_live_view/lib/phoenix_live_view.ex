@@ -53,10 +53,13 @@ defmodule Phoenix.LiveView do
 
   There are also use cases which are a bad fit for LiveView:
 
-    * Animations - animations, menus, and general events
+    * Animations - animations, menus, and general UI events
       that do not need the server in the first place are a
-      bad fit for LiveView, as they can be achieved purely
-      with CSS and/or CSS transitions;
+      bad fit for LiveView. Those can be achieved without
+      LiveView in multiple ways, such as with CSS and CSS
+      transitions, using LiveView hooks, or even integrating
+      with UI toolkits designed for this purpose, such as
+      Bootstrap, Alpine.JS, and similar.
 
   ## Life-cycle
 
@@ -274,7 +277,7 @@ defmodule Phoenix.LiveView do
   | [Params](bindings.md#click-events) | `phx-value-*` |
   | [Click Events](bindings.md#click-events) | `phx-click`, `phx-capture-click` |
   | [Focus/Blur Events](bindings.md#focus-and-blur-events) | `phx-blur`, `phx-focus`, `phx-window-blur`, `phx-window-focus` |
-  | [Key Events](bindings.md#key-events) | `phx-keydown`, `phx-keyup`, `phx-window-keydown`, `phx-window-keyup` |
+  | [Key Events](bindings.md#key-events) | `phx-keydown`, `phx-keyup`, `phx-window-keydown`, `phx-window-keyup`, `phx-key` |
   | [Form Events](form-bindings.md) | `phx-change`, `phx-submit`, `phx-feedback-for`, `phx-disable-with`, `phx-trigger-action`, `phx-auto-recover` |
   | [Rate Limiting](bindings.md#rate-limiting-events-with-debounce-and-throttle) | `phx-debounce`, `phx-throttle` |
   | [DOM Patching](dom-patching.md) | `phx-update` |
@@ -359,6 +362,7 @@ defmodule Phoenix.LiveView do
     * [Live Navigation](live-navigation.md)
     * [Security considerations of the LiveView model](security-model.md)
     * [Telemetry](telemetry.md)
+    * [Uploads](uploads.md)
     * [Using Gettext for internationalization](using-gettext.md)
 
   ## Client-side
@@ -369,7 +373,7 @@ defmodule Phoenix.LiveView do
     * [Form bindings](form-bindings.md)
     * [DOM patching and temporary assigns](dom-patching.md)
     * [JavaScript interoperability](js-interop.md)
-
+    * [Uploads (External)](uploads-external.md)
   '''
 
   alias Phoenix.LiveView.Socket
@@ -395,7 +399,9 @@ defmodule Phoenix.LiveView do
   `options` is one of:
 
     * `:temporary_assigns` - a keyword list of assigns that are temporary
-      and must be reset to their value after every render
+      and must be reset to their value after every render. Note that once
+      the value is reset, it won't be re-rendered again until it is explicitly
+      assigned
 
     * `:layout` - the optional layout to be used by the LiveView
 
@@ -424,12 +430,16 @@ defmodule Phoenix.LiveView do
   @callback handle_info(msg :: term, socket :: Socket.t()) ::
               {:noreply, Socket.t()}
 
+  @callback handle_cast(msg :: term, socket :: Socket.t()) ::
+              {:noreply, Socket.t()}
+
   @optional_callbacks mount: 3,
                       terminate: 2,
                       handle_params: 3,
                       handle_event: 3,
                       handle_call: 3,
-                      handle_info: 2
+                      handle_info: 2,
+                      handle_cast: 2
 
   @doc """
   Uses LiveView in the current module to mark it a LiveView.
@@ -677,6 +687,156 @@ defmodule Phoenix.LiveView do
   """
   defdelegate push_event(socket, event, payload), to: Phoenix.LiveView.Utils
 
+  @doc ~S"""
+  Allows an upload for the provided name.
+
+  ## Options
+
+    * `:accept` - Required. A list of unique file type specifiers or the
+      atom :any to allow any kind of file. For example, `[".jpeg"]`, `:any`, etc.
+
+    * `:max_entries` - The maximum number of selected files to allow per
+      file input. Defaults to 1.
+
+    * `:max_file_size` - The maximum file size in bytes to allow to be uploaded.
+      Defaults 8MB. For example, `12_000_000`.
+
+    * `:chunk_size` - The chunk size in bytes to send when uploading.
+      Defaults `64_000`.
+
+    * `:chunk_timeout` - The time in milliseconds to wait before closing the
+      upload channel when a new chunk has not been received. Defaults `10_000`.
+
+    * `:external` - The 2-arity function for generating metadata for external
+      client uploaders. See the Uploads section for example usage.
+
+    * `:progress` - The optional 3-arity function for receiving progress events
+
+    * `:auto_upload` - Instructs the client to upload the file automatically
+      on file selection instead of waiting for form submits. Default false.
+
+  Raises when a previously allowed upload under the same name is still active.
+
+  ## Examples
+
+      allow_upload(socket, :avatar, accept: ~w(.jpg .jpeg), max_entries: 2)
+      allow_upload(socket, :avatar, accept: :any)
+
+  For consuming files automatically as they are uploaded, you can pair `auto_upload: true` with
+  a custom progress function to consume the entries as they are completed. For example:
+
+      allow_upload(socket, :avatar, accept: :any, progress: &handle_progress/3, auto_upload: true)
+
+      defp handle_progress(:avatar, entry, socket) do
+        if entry.done? do
+          uploaded_file =
+            consume_uploaded_entry(socket, entry, fn %{} = meta ->
+              ...
+            end)
+
+          {:noreply, put_flash(socket, :info, "file #{uploaded_file.name} uploaded")}
+        else
+          {:noreply, socket}
+        end
+      end
+  """
+  defdelegate allow_upload(socket, name, options), to: Phoenix.LiveView.Upload
+
+  @doc """
+  Revokes a previously allowed upload from `allow_upload/3`.
+
+  ## Examples
+
+      disallow_upload(socket, :avatar)
+  """
+  defdelegate disallow_upload(socket, name), to: Phoenix.LiveView.Upload
+
+  @doc """
+  Cancels an upload for the given entry.
+
+  ## Examples
+
+      <%= for entry <- @uploads.avatar.entries do %>
+        ...
+        <button phx-click="cancel-upload" phx-value-ref="<%= entry.ref %>">cancel</button>
+      <% end %>
+
+      def handle_event("cancel-upload", %{"ref" => ref}, socket) do
+        {:noreply, cancel_upload(socket, :avatar, ref)}
+      end
+  """
+  defdelegate cancel_upload(socket, name, entry_ref), to: Phoenix.LiveView.Upload
+
+  @doc """
+  Returns the completed and in progress entries for the upload.
+
+  ## Examples
+
+      case uploaded_entries(socket, :photos) do
+        {[_ | _] = completed, []} ->
+          # all entries are completed
+
+        {[], [_ | _] = in_progress} ->
+          # all entries are still in progress
+      end
+  """
+  defdelegate uploaded_entries(socket, name), to: Phoenix.LiveView.Upload
+
+  @doc ~S"""
+  Consumes the uploaded entries.
+
+  Raises when there are still entries in progress.
+  Typically called when submitting a form to handle the
+  uploaded entries alongside the form data. For form submissions,
+  it is guaranteed that all entries have completed before the submit event
+  is invoked. Once entries are consumed, they are removed from the upload.
+
+  ## Examples
+
+      def handle_event("save", _params, socket) do
+        uploaded_files =
+          consume_uploaded_entries(socket, :avatar, fn %{path: path}, _entry ->
+            dest = Path.join("priv/static/uploads", Path.basename(path))
+            File.cp!(path, dest)
+            Routes.static_path(socket, "/uploads/#{Path.basename(dest)}")
+          end)
+        {:noreply, update(socket, :uploaded_files, &(&1 ++ uploaded_files))}
+      end
+  """
+  defdelegate consume_uploaded_entries(socket, name, func), to: Phoenix.LiveView.Upload
+
+  @doc ~S"""
+  Consumes an individual uploaded entry.
+
+  Raises when the entry is still in progress.
+  Typically called when submitting a form to handle the
+  uploaded entries alongside the form data. Once entries are consumed,
+  they are removed from the upload.
+
+  This is a lower-level feature than `consume_uploaded_entries/3` and useful
+  for scenarios where you want to consume entries as they are individually completed.
+
+  ## Examples
+
+      def handle_event("save", _params, socket) do
+        case uploaded_entries(socket, :avatar) do
+          {[_|_] = entries, []} ->
+            uploaded_files = for entry <- entries do
+              consume_uploaded_entry(socket, entry, fn %{path: path} ->
+                dest = Path.join("priv/static/uploads", Path.basename(path))
+                File.cp!(path, dest)
+                Routes.static_path(socket, "/uploads/#{Path.basename(dest)}")
+              end)
+            end
+            {:noreply, update(socket, :uploaded_files, &(&1 ++ uploaded_files))}
+
+          _ ->
+            {:noreply, socket}
+        end
+      end
+  """
+  defdelegate consume_uploaded_entry(socket, entry, func), to: Phoenix.LiveView.Upload
+
   @doc """
   Annotates the socket for redirect to a destination path.
 
@@ -897,7 +1057,7 @@ defmodule Phoenix.LiveView do
   assign on mount:
 
       def mount(params, session, socket) do
-        {:ok, assign(socket, static_change: static_changed?(socket))}
+        {:ok, assign(socket, static_changed?: static_changed?(socket))}
       end
 
   And then in your views:
@@ -969,6 +1129,9 @@ defmodule Phoenix.LiveView do
   match the `:id` associated with the component) and the component must be
   mounted within the current LiveView.
 
+  If this call is executed from a process which is not a LiveView
+  nor a LiveComponent, the `pid` parameter has to be specified.
+
   When the component receives the update, the optional
   [`preload/1`](`c:Phoenix.LiveComponent.preload/1`) callback is invoked, then
   the updated values are merged with the component's assigns and
@@ -977,12 +1140,12 @@ defmodule Phoenix.LiveView do
 
   While a component may always be updated from the parent by updating some
   parent assigns which will re-render the child, thus invoking
-  [`update/2`](`c:Phoenix.LiveComponent.update/2`) on the child component,
-  `send_update/2` is useful for updating a component that entirely manages its
+  [`update/3`](`c:Phoenix.LiveComponent.update/3`) on the child component,
+  `send_update/3` is useful for updating a component that entirely manages its
   own state, as well as messaging between components mounted in the same
   LiveView.
 
-  **Note:** `send_update/2` cannot update a LiveComponent that is mounted in a
+  **Note:** `send_update/3` cannot update a LiveComponent that is mounted in a
   different LiveView. To update a component in a different LiveView you must
   send a message to the LiveView process that the LiveComponent is mounted
   within (often via `Phoenix.PubSub`).
@@ -994,19 +1157,31 @@ defmodule Phoenix.LiveView do
         send_update(Cart, id: "cart", status: "cancelled")
         {:noreply, socket}
       end
+
+      def handle_event("cancel-order-asynchronously", _, socket) do
+        ...
+        pid = self()
+
+        Task.async(fn ->
+          # Do domething asynchronously
+          send_update(pid, Cart, id: "cart", status: "cancelled")
+        end)
+
+        {:noreply, socket}
+      end
   """
-  def send_update(module, assigns) when is_atom(module) do
+  def send_update(pid \\ self(), module, assigns) when is_atom(module) and is_pid(pid) do
     assigns = Enum.into(assigns, %{})
 
     id =
       assigns[:id] ||
         raise ArgumentError, "missing required :id in send_update. Got: #{inspect(assigns)}"
 
-    Phoenix.LiveView.Channel.send_update(module, id, assigns)
+    Phoenix.LiveView.Channel.send_update(pid, module, id, assigns)
   end
 
   @doc """
-  Similar to `send_update/2` but the update will be delayed according to the given `time_in_milliseconds`.
+  Similar to `send_update/3` but the update will be delayed according to the given `time_in_milliseconds`.
 
   ## Examples
 
@@ -1015,16 +1190,28 @@ defmodule Phoenix.LiveView do
         send_update_after(Cart, [id: "cart", status: "cancelled"], 3000)
         {:noreply, socket}
       end
+
+      def handle_event("cancel-order-asynchronously", _, socket) do
+        ...
+        pid = self()
+
+        Task.async(fn ->
+          # Do domething asynchronously
+          send_update_after(pid, Cart, [id: "cart", status: "cancelled"], 3000)
+        end)
+
+        {:noreply, socket}
+      end
   """
-  def send_update_after(module, assigns, time_in_milliseconds)
-      when is_atom(module) and is_integer(time_in_milliseconds) do
+  def send_update_after(pid \\ self(), module, assigns, time_in_milliseconds)
+      when is_atom(module) and is_integer(time_in_milliseconds) and is_pid(pid) do
     assigns = Enum.into(assigns, %{})
 
     id =
       assigns[:id] ||
         raise ArgumentError, "missing required :id in send_update_after. Got: #{inspect(assigns)}"
 
-    Phoenix.LiveView.Channel.send_update_after(module, id, assigns, time_in_milliseconds)
+    Phoenix.LiveView.Channel.send_update_after(pid, module, id, assigns, time_in_milliseconds)
   end
 
   @doc """

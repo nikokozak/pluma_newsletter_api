@@ -1,7 +1,7 @@
 defmodule Phoenix.LiveView.MixProject do
   use Mix.Project
 
-  @version "0.14.8"
+  @version "0.15.1"
 
   def project do
     [
@@ -38,7 +38,7 @@ defmodule Phoenix.LiveView.MixProject do
 
   defp deps do
     [
-      {:phoenix, "~> 1.5.3"},
+      {:phoenix, "~> 1.5.7"},
       {:phoenix_html, "~> 2.14"},
       {:telemetry, "~> 0.4.2 or ~> 0.5"},
       {:jason, "~> 1.0", optional: true},
@@ -67,12 +67,14 @@ defmodule Phoenix.LiveView.MixProject do
       "guides/client/form-bindings.md",
       "guides/client/dom-patching.md",
       "guides/client/js-interop.md",
+      "guides/client/uploads-external.md",
       "guides/server/assigns-eex.md",
       "guides/server/error-handling.md",
       "guides/server/live-layouts.md",
       "guides/server/live-navigation.md",
       "guides/server/security-model.md",
       "guides/server/telemetry.md",
+      "guides/server/uploads.md",
       "guides/server/using-gettext.md"
     ]
   end
@@ -87,6 +89,15 @@ defmodule Phoenix.LiveView.MixProject do
 
   defp groups_for_modules do
     [
+      "Upload structures": [
+        Phoenix.LiveView.UploadConfig,
+        Phoenix.LiveView.UploadEntry
+      ],
+      "Testing structures": [
+        Phoenix.LiveViewTest.Element,
+        Phoenix.LiveViewTest.Upload,
+        Phoenix.LiveViewTest.View
+      ],
       "Live EEx Engine": [
         Phoenix.LiveView.Engine,
         Phoenix.LiveView.Component,

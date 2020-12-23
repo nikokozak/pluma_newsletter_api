@@ -55,7 +55,10 @@ defmodule Phoenix.LiveView.Static do
     end
   end
 
-  defp verify_token(endpoint, token) do
+  @doc """
+  Verifies a LiveView token.
+  """
+  def verify_token(endpoint, token) do
     case Phoenix.Token.verify(endpoint, Utils.salt!(endpoint), token, max_age: @max_session_age) do
       {:ok, {@token_vsn, term}} -> {:ok, term}
       {:ok, _} -> {:error, :outdated}
@@ -117,7 +120,8 @@ defmodule Phoenix.LiveView.Static do
           assign_new: {conn.assigns, []},
           connect_params: %{},
           connect_info: %{},
-          conn_session: conn_session
+          conn_session: conn_session,
+          changed: %{}
         },
         action,
         flash,
@@ -220,7 +224,7 @@ defmodule Phoenix.LiveView.Static do
           parent_pid: self(),
           router: parent.router
         },
-        %{assign_new: {parent.assigns.__assigns__, []}, phoenix_live_layout: false},
+        %{assign_new: {parent.assigns.__assigns__, []}, phoenix_live_layout: false, changed: %{}},
         nil,
         %{},
         parent.host_uri
@@ -358,7 +362,7 @@ defmodule Phoenix.LiveView.Static do
     })
   end
 
-  # THe static token is computed only on disconnected render and it keeps
+  # The static token is computed only on disconnected render and it keeps
   # the information that is only available during disconnected renders,
   # such as assign_new.
   defp sign_static_token(%Socket{id: id, endpoint: endpoint} = socket) do
@@ -370,7 +374,10 @@ defmodule Phoenix.LiveView.Static do
     })
   end
 
-  defp sign_token(endpoint, data) do
+  @doc """
+  Signs a LiveView token.
+  """
+  def sign_token(endpoint, data) do
     Phoenix.Token.sign(endpoint, Utils.salt!(endpoint), {@token_vsn, data})
   end
 

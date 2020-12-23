@@ -13,6 +13,11 @@ defmodule Phoenix.LiveView.Diff do
   @reply :r
   @title :t
 
+  # We use this to track which components have been marked
+  # for deletion. If the component is used after being marked,
+  # it should not be deleted.
+  @marked_for_deletion :marked_for_deletion
+
   @doc """
   Returns the diff component state.
   """
@@ -87,11 +92,25 @@ defmodule Phoenix.LiveView.Diff do
     end
   end
 
+  defp deep_merge(_original, %{@static => _} = extra), do: extra
+
   defp deep_merge(original, extra) do
     Map.merge(original, extra, fn
       _, %{} = original, %{} = extra -> deep_merge(original, extra)
       _, _original, extra -> extra
     end)
+  end
+
+  @doc """
+  Render information stored in private changed.
+  """
+  def render_private(socket, diff) do
+    {_, diff} =
+      diff
+      |> maybe_put_reply(socket)
+      |> maybe_put_events(socket)
+
+    diff
   end
 
   @doc """
@@ -113,12 +132,7 @@ defmodule Phoenix.LiveView.Diff do
     {component_diffs, components} = render_pending_components(socket, pending, %{}, components)
     socket = %{socket | fingerprints: prints}
 
-    diff =
-      diff
-      |> maybe_put_title(socket)
-      |> maybe_put_events(socket)
-      |> maybe_put_reply(socket)
-
+    diff = maybe_put_title(diff, socket)
     {diff, component_diffs} = extract_events({diff, component_diffs})
 
     if map_size(component_diffs) == 0 do
@@ -138,8 +152,8 @@ defmodule Phoenix.LiveView.Diff do
 
   defp maybe_put_events(diff, socket) do
     case Utils.get_push_events(socket) do
-      [_ | _] = events -> Map.put(diff, @events, events)
-      [] -> diff
+      [_ | _] = events -> {true, Map.put(diff, @events, events)}
+      [] -> {false, diff}
     end
   end
 
@@ -169,7 +183,7 @@ defmodule Phoenix.LiveView.Diff do
   It returns the updated `component_diffs` and the updated `components` or
   `:error` if the component cid does not exist.
   """
-  def with_component(socket, cid, component_diffs, components, fun) when is_integer(cid) do
+  def write_component(socket, cid, component_diffs, components, fun) when is_integer(cid) do
     {cid_to_component, _id_to_cid, _} = components
 
     case cid_to_component do
@@ -207,9 +221,29 @@ defmodule Phoenix.LiveView.Diff do
   end
 
   @doc """
+  Execute the `fun` with the component `cid` with the given `socket` and returns the result.
+
+  `:error` if the component cid does not exist.
+  """
+  def read_component(socket, cid, components, fun) when is_integer(cid) do
+    {cid_to_component, _id_to_cid, _} = components
+
+    case cid_to_component do
+      %{^cid => {component, _id, assigns, private, fingerprints}} ->
+          socket
+          |> configure_socket_for_component(assigns, private, fingerprints)
+          |> fun.(component)
+
+      %{} ->
+        :error
+    end
+  end
+
+
+  @doc """
   Sends an update to a component.
 
-  Like `with_component/5`, it will store the result under the `cid
+  Like `write_component/5`, it will store the result under the `cid
    key in the `component_diffs` map.
 
   If the component exists, a `{diff, new_components}` tuple
@@ -227,7 +261,7 @@ defmodule Phoenix.LiveView.Diff do
         updated_assigns = maybe_call_preload!(module, updated_assigns)
 
         {diff, new_components, :noop} =
-          with_component(socket, cid, %{}, components, fn component_socket, component ->
+          write_component(socket, cid, %{}, components, fn component_socket, component ->
             {Utils.maybe_call_update!(component_socket, component, updated_assigns), :noop}
           end)
 
@@ -239,11 +273,30 @@ defmodule Phoenix.LiveView.Diff do
   end
 
   @doc """
-  Deletes a component by `cid`.
+  Marks a component for deletion.
+
+  It won't be deleted if the component is used meanwhile.
+  """
+  def mark_for_deletion_component(cid, {cid_to_component, id_to_cid, uuids}) do
+    cid_to_component =
+      case cid_to_component do
+        %{^cid => {component, id, assigns, private, prints}} ->
+          private = Map.put(private, @marked_for_deletion, true)
+          Map.put(cid_to_component, cid, {component, id, assigns, private, prints})
+
+        %{} ->
+          cid_to_component
+      end
+
+    {cid_to_component, id_to_cid, uuids}
+  end
+
+  @doc """
+  Deletes a component by `cid` if it has not been used meanwhile.
   """
   def delete_component(cid, {cid_to_component, id_to_cid, uuids}) do
-    case Map.pop(cid_to_component, cid) do
-      {{component, id, _, _, _}, cid_to_component} ->
+    case cid_to_component do
+      %{^cid => {component, id, _, %{@marked_for_deletion => true}, _}} ->
         id_to_cid =
           case id_to_cid do
             %{^component => inner} ->
@@ -256,10 +309,10 @@ defmodule Phoenix.LiveView.Diff do
               id_to_cid
           end
 
-        {cid_to_component, id_to_cid, uuids}
+        {[cid], {Map.delete(cid_to_component, cid), id_to_cid, uuids}}
 
       _ ->
-        {cid_to_component, id_to_cid, uuids}
+        {[], {cid_to_component, id_to_cid, uuids}}
     end
   end
 
@@ -460,12 +513,14 @@ defmodule Phoenix.LiveView.Diff do
           {socket, components} =
             case cids do
               %{^cid => {_component, _id, assigns, private, prints}} ->
+                private = Map.delete(private, @marked_for_deletion)
                 {configure_socket_for_component(socket, assigns, private, prints), components}
 
               %{} ->
-                {mount_component(socket, component, %{
-                   myself: %Phoenix.LiveComponent.CID{cid: cid}
-                 }), put_cid(components, component, id, cid)}
+                myself_assigns = %{myself: %Phoenix.LiveComponent.CID{cid: cid}}
+
+                {mount_component(socket, component, myself_assigns),
+                 put_cid(components, component, id, cid)}
             end
 
           triplet =
@@ -515,10 +570,11 @@ defmodule Phoenix.LiveView.Diff do
   end
 
   defp render_component(socket, component, id, cid, new?, pending, cids, diffs, components) do
-    diffs = maybe_put_events(diffs, socket)
+    {events?, diffs} = maybe_put_events(diffs, socket)
+    changed? = new? or Utils.changed?(socket)
 
     {socket, pending, diff, {cid_to_component, id_to_cid, uuids}} =
-      if new? or Utils.changed?(socket) do
+      if changed? do
         rendered = Utils.to_rendered(socket, component)
 
         {changed?, linked_cid, prints} =
@@ -528,10 +584,16 @@ defmodule Phoenix.LiveView.Diff do
           traverse(socket, rendered, prints, pending, components, changed?)
 
         diff = if linked_cid, do: Map.put(diff, @static, linked_cid), else: diff
-        socket = Utils.clear_changed(%{socket | fingerprints: component_prints})
-        {socket, pending, diff, components}
+        {%{socket | fingerprints: component_prints}, pending, diff, components}
       else
         {socket, pending, %{}, components}
+      end
+
+    socket =
+      if changed? or events? do
+        Utils.clear_changed(socket)
+      else
+        socket
       end
 
     diffs =
@@ -605,13 +667,13 @@ defmodule Phoenix.LiveView.Diff do
   end
 
   defp mount_component(socket, component, assigns) do
+    private =
+      socket.private
+      |> Map.take([:conn_session])
+      |> Map.put(:changed, %{})
+
     socket =
-      configure_socket_for_component(
-        socket,
-        assigns,
-        Map.take(socket.private, [:conn_session]),
-        new_fingerprints()
-      )
+      configure_socket_for_component(socket, assigns, private, new_fingerprints())
       |> Utils.assign(:flash, %{})
 
     Utils.maybe_call_live_component_mount!(socket, component)

@@ -35,15 +35,15 @@ defmodule Phoenix.LiveView.Component do
           </div>
 
       Components are also allowed inside Elixir's special forms, such as
-      `if`, `for`, `case`, and friends. So while this does not work:
+      `if`, `for`, `case`, and friends.
 
-          <%= Enum.map(items, fn item -> %>
+          <%= for item <- items do %>
             <%= live_component @socket, SomeComponent, id: item %>
           <% end %>
 
-      Since the component was given to `Enum.map/2`, this does:
+      However, using other module functions such as `Enum`, will not work:
 
-          <%= for item <- items do %>
+          <%= Enum.map(items, fn item -> %>
             <%= live_component @socket, SomeComponent, id: item %>
           <% end %>
       """
@@ -281,7 +281,9 @@ defmodule Phoenix.LiveView.Engine do
 
   @behaviour Phoenix.Template.Engine
 
-  @impl true
+  # TODO: Use @impl true instead of @doc false when we require Elixir v1.12
+
+  @doc false
   def compile(path, _name) do
     trim = Application.get_env(:phoenix, :trim_on_html_eex_engine, true)
     EEx.compile_file(path, engine: __MODULE__, line: 1, trim: trim)
@@ -290,7 +292,7 @@ defmodule Phoenix.LiveView.Engine do
   @behaviour EEx.Engine
   @assigns_var Macro.var(:assigns, nil)
 
-  @impl true
+  @doc false
   def init(_opts) do
     %{
       static: [],
@@ -299,19 +301,19 @@ defmodule Phoenix.LiveView.Engine do
     }
   end
 
-  @impl true
+  @doc false
   def handle_begin(state) do
     %{state | static: [], dynamic: []}
   end
 
-  @impl true
+  @doc false
   def handle_end(state) do
     %{static: static, dynamic: dynamic} = state
     safe = {:safe, Enum.reverse(static)}
     {:__block__, [live_rendered: true], Enum.reverse([safe | dynamic])}
   end
 
-  @impl true
+  @doc false
   def handle_body(state) do
     {:ok, rendered} = to_rendered_struct(handle_end(state), {:untainted, %{}}, %{})
 
@@ -321,13 +323,18 @@ defmodule Phoenix.LiveView.Engine do
     end
   end
 
-  @impl true
+  @doc false
   def handle_text(state, text) do
+    handle_text(state, [], text)
+  end
+
+  @doc false
+  def handle_text(state, _meta, text) do
     %{static: static} = state
     %{state | static: [text | static]}
   end
 
-  @impl true
+  @doc false
   def handle_expr(state, "=", ast) do
     %{static: static, dynamic: dynamic, vars_count: vars_count} = state
     var = Macro.var(:"arg#{vars_count}", __MODULE__)
@@ -432,6 +439,26 @@ defmodule Phoenix.LiveView.Engine do
        when is_atom(macro) do
     if classify_taint(macro, args) in [:live, :render] do
       {args, [opts]} = Enum.split(args, -1)
+
+      # The reason we can safely ignore assigns here is because
+      # each branch in the live/render constructs are their own
+      # rendered struct and, if the rendered has a new fingerpint,
+      # then change tracking is fully disabled.
+      #
+      # For example, take this code:
+      #
+      #   <%= if @foo do %>
+      #     <%= @bar %>
+      #   <% else %>
+      #     <%= @baz %>
+      #   <% end %>
+      #
+      # In theory, @bar and @baz should be recomputed whenever
+      # @foo changes, because changing @foo may require a value
+      # that was not available on the page to show. However,
+      # given the branches have different fingerprints, the
+      # diff mechanism takes care of forcing all assigns to
+      # be rendered without us needing to handle it here.
       {args, vars, _} = analyze_list(args, vars, assigns, [])
 
       opts =
@@ -450,16 +477,14 @@ defmodule Phoenix.LiveView.Engine do
   end
 
   defp maybe_block_to_rendered([{:->, _, _} | _] = blocks, vars) do
-    # First collect all vars across all assigns since cond/case may be linear
-    {blocks, {vars, assigns}} =
-      Enum.map_reduce(blocks, {vars, %{}}, fn
-        {:->, meta, [args, block]}, {vars, assigns} ->
-          {args, vars, assigns} = analyze_list(args, vars, assigns, [])
-          {{:->, meta, [args, block]}, {vars, assigns}}
-      end)
-
-    # Now convert blocks
     for {:->, meta, [args, block]} <- blocks do
+      # Variables defined in the head should not taint the whole body,
+      # only their usage within the body.
+      {args, match_vars, assigns} = analyze_list(args, vars, %{}, [])
+
+      # So we collect them as usual but keep the original tainting.
+      vars = reset_vars(vars, match_vars)
+
       case to_rendered_struct(block, vars, assigns) do
         {:ok, rendered} -> {:->, meta, [args, rendered]}
         :error -> {:->, meta, [args, block]}

@@ -13,7 +13,8 @@ defmodule Phoenix.LiveView.Helpers do
   @doc """
   Generates a link that will patch the current LiveView.
 
-  When navigating to the current LiveView, `c:handle_params/3` is
+  When navigating to the current LiveView,
+  `c:Phoenix.LiveView.handle_params/3` is
   immediately invoked to handle the change of params and URL state.
   Then the new state is pushed to the client, without reloading the
   whole page while also maintaining the current scroll position.
@@ -214,14 +215,14 @@ defmodule Phoenix.LiveView.Helpers do
         {_, _} -> {nil, assigns}
       end
 
-    {assigns, inner_content} = rewrite_do(do_block, assigns, __CALLER__)
+    {assigns, inner_block} = rewrite_do(do_block, assigns, __CALLER__)
 
     quote do
       Phoenix.LiveView.Helpers.__live_component__(
         unquote(socket),
         unquote(component).__live__(),
         unquote(assigns),
-        unquote(inner_content)
+        unquote(inner_block)
       )
     end
   end
@@ -229,7 +230,17 @@ defmodule Phoenix.LiveView.Helpers do
   defp rewrite_do(nil, opts, _caller), do: {opts, nil}
 
   defp rewrite_do([{:->, meta, _} | _] = do_block, opts, _caller) do
-    {opts, {:fn, meta, do_block}}
+    inner_fun = {:fn, meta, do_block}
+
+    quoted =
+      quote do
+        fn parent_changed, arg ->
+          var!(assigns) = unquote(__MODULE__).__render_inner_fun__(var!(assigns), parent_changed)
+          unquote(inner_fun).(arg)
+        end
+      end
+
+    {opts, quoted}
   end
 
   defp rewrite_do(do_block, opts, caller) do
@@ -248,24 +259,9 @@ defmodule Phoenix.LiveView.Helpers do
 
     quoted =
       quote do
-        fn extra_assigns ->
+        fn changed, extra_assigns ->
           var!(assigns) =
-            case Enum.to_list(extra_assigns) do
-              [] ->
-                var!(assigns)
-
-              _ ->
-                assigns = Enum.into(extra_assigns, var!(assigns))
-
-                if var = var!(changed, Phoenix.LiveView.Engine) do
-                  changed =
-                    for {key, _} <- extra_assigns, key != :socket, into: var, do: {key, true}
-
-                  put_in(assigns.__changed__, changed)
-                else
-                  assigns
-                end
-            end
+            unquote(__MODULE__).__render_inner_do__(var!(assigns), changed, extra_assigns)
 
           unquote(do_block)
         end
@@ -274,10 +270,43 @@ defmodule Phoenix.LiveView.Helpers do
     {opts, quoted}
   end
 
+  @doc false
+  def __render_inner_fun__(assigns, parent_changed) do
+    if is_nil(parent_changed) or parent_changed[:inner_block] == true do
+      assigns
+    else
+      Map.put(assigns, :__changed__, %{})
+    end
+  end
+
+  @doc false
+  def __render_inner_do__(assigns, parent_changed, extra_assigns) do
+    # If the parent is tracking changes or the inner content changed,
+    # we will keep the current __changed__ values
+    changed =
+      if is_nil(parent_changed) or parent_changed[:inner_block] == true do
+        Map.get(assigns, :__changed__)
+      else
+        %{}
+      end
+
+    assigns = Enum.into(extra_assigns, assigns)
+
+    changed =
+      changed &&
+        for {key, _} <- extra_assigns,
+            key != :socket,
+            into: changed,
+            do: {key, true}
+
+    Map.put(assigns, :__changed__, changed)
+  end
+
+  @doc false
   def __live_component__(%Socket{}, %{kind: :component, module: component}, assigns, inner)
       when is_list(assigns) or is_map(assigns) do
     assigns = assigns |> Map.new() |> Map.put_new(:id, nil)
-    assigns = if inner, do: Map.put(assigns, :inner_content, inner), else: assigns
+    assigns = if inner, do: Map.put(assigns, :inner_block, inner), else: assigns
     id = assigns[:id]
 
     if is_nil(id) and
@@ -293,6 +322,18 @@ defmodule Phoenix.LiveView.Helpers do
   def __live_component__(%Socket{}, %{kind: kind, module: module}, assigns)
       when is_list(assigns) or is_map(assigns) do
     raise "expected #{inspect(module)} to be a component, but it is a #{kind}"
+  end
+
+  @doc """
+  Renders the `@inner_block` assign of a component with the given `argument`.
+
+      <%= render_block(@inner_block, value: @value)
+
+  """
+  defmacro render_block(inner_block, argument \\ []) do
+    quote do
+      unquote(inner_block).(var!(changed, Phoenix.LiveView.Engine), unquote(argument))
+    end
   end
 
   @doc """
@@ -330,13 +371,116 @@ defmodule Phoenix.LiveView.Helpers do
   end
 
   @doc """
+  Returns the entry errors for an upload.
+
+  The following errors may be returned:
+
+    * `:too_large` - The entry exceeds the `:max_file_size` constraint
+    * `:too_many_files` - The number of selected files exceeds the `:max_entries` constraint
+    * `:not_accepted` - The entry does not match the `:accept` MIME types
+
+  ## Examples
+
+      def error_to_string(:too_large), do: "Too large"
+      def error_to_string(:too_many_files), do: "You have selected too many files"
+      def error_to_string(:not_accepted), do: "You have selected an unacceptable file type"
+
+      <%= for entry <- @uploads.avatar.entries do %>
+        <%= for err <- upload_errors(@uploads.avatar, entry) do %>
+          <div class="alert alert-danger">
+            <%= error_to_string(err) %>
+          </div>
+        <% end %>
+      <% end %>
+  """
+  def upload_errors(
+        %Phoenix.LiveView.UploadConfig{} = conf,
+        %Phoenix.LiveView.UploadEntry{} = entry
+      ) do
+    for {ref, error} <- conf.errors, ref == entry.ref, do: error
+  end
+
+  @doc """
+  Generates an image preview on the client for a selected file.
+
+  ## Examples
+
+      <%= for entry <- @uploads.avatar.entries do %>
+        <%= live_img_preview entry, width: 75 %>
+      <% end %>
+  """
+  def live_img_preview(%Phoenix.LiveView.UploadEntry{ref: ref} = entry, opts \\ []) do
+    opts =
+      Keyword.merge(opts,
+        id: "phx-preview-#{ref}",
+        data_phx_upload_ref: entry.upload_ref,
+        data_phx_entry_ref: ref,
+        data_phx_hook: "Phoenix.LiveImgPreview",
+        data_phx_update: "ignore"
+      )
+
+    Phoenix.HTML.Tag.content_tag(:img, "", opts)
+  end
+
+  @doc """
+  Builds a file input tag for a LiveView upload.
+
+  Options may be passed through to the tag builder for custom attributes.
+
+  ## Drag and Drop
+
+  Drag and drop is supported by annotating the droppable container with a `phx-drop-target`
+  attribute pointing to the DOM ID of the file input. By default, the file input ID is the
+  upload `ref`, so the following markup is all that is required for drag and drop support:
+
+      <div class="container" phx-drop-target="<%= @uploads.avatar.ref %>">
+          ...
+          <%= live_file_input @uploads.avatar %>
+      </div>
+
+  ## Examples
+
+      <%= live_file_input @uploads.avatar %>
+  """
+  def live_file_input(%Phoenix.LiveView.UploadConfig{} = conf, opts \\ []) do
+    opts =
+      if conf.max_entries > 1 do
+        Keyword.put(opts, :multiple, true)
+      else
+        opts
+      end
+
+    preflighted_entries = for entry <- conf.entries, entry.preflighted?, do: entry
+    done_entries = for entry <- conf.entries, entry.done?, do: entry
+    valid? = Enum.any?(conf.entries) && Enum.empty?(conf.errors)
+
+    Phoenix.HTML.Tag.content_tag(
+      :input,
+      "",
+      Keyword.merge(opts,
+        type: "file",
+        id: opts[:id] || conf.ref,
+        name: conf.name,
+        accept: if(conf.accept != :any, do: conf.accept),
+        phx_hook: "Phoenix.LiveFileUpload",
+        data_phx_update: "ignore",
+        data_phx_upload_ref: conf.ref,
+        data_phx_active_refs: Enum.map_join(conf.entries, ",", & &1.ref),
+        data_phx_done_refs: Enum.map_join(done_entries, ",", & &1.ref),
+        data_phx_preflighted_refs: Enum.map_join(preflighted_entries, ",", & &1.ref),
+        data_phx_auto_upload: valid? && conf.auto_upload?
+      )
+    )
+  end
+
+  @doc """
   Renders a title tag with automatic prefix/suffix on `@page_title` updates.
 
   ## Examples
 
-      <%= live_title_tag @page_title, prefix: "MyApp – " %>
+      <%= live_title_tag assigns[:page_title] || "Welcome", prefix: "MyApp – " %>
 
-      <%= live_title_tag @page_title, suffix: " – MyApp" %>
+      <%= live_title_tag assigns[:page_title] || "Welcome", suffix: " – MyApp" %>
   """
   def live_title_tag(title, opts \\ []) do
     title_tag(title, opts[:prefix], opts[:suffix], opts)

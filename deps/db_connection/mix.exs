@@ -2,7 +2,7 @@ defmodule DBConnection.Mixfile do
   use Mix.Project
 
   @pools [:connection_pool, :ownership]
-  @version "2.3.0"
+  @version "2.3.1"
 
   def project do
     [app: :db_connection,
@@ -26,7 +26,7 @@ defmodule DBConnection.Mixfile do
   end
 
   defp deps do
-    [{:connection, "~> 1.0.2"},
+    [{:connection, "~> 1.0"},
      {:ex_doc, "~> 0.12", only: :dev}]
   end
 

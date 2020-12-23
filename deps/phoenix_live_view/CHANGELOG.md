@@ -1,11 +1,44 @@
 # Changelog
 
+## 0.15.1 (2020-12-20)
+
+### Enhancements
+  - Ensure all click events bubble for mobile Safari
+  - Run `consume_uploaded_entries` in LiveView caller process
+
+### Bug fixes
+  - Fix hooks not getting remounted after liveview recovery
+  - Fix bug causing reload with jitter on timeout from previously closed channel
+  - Fix component child nodes being lost when component patch goes from single root node to multiple child siblings
+  - Fix `phx-capture-click` triggering on mouseup during text selection
+  - Fix LiveView `push_event`'s not clearing up in components
+  - Fix textarea being patched by LV while focused
+
+## 0.15.0 (2020-11-20)
+
+### Enhancements
+  - Add live uploads support for file progress, interactive file selection, and direct to cloud support
+  - Implement `Phoenix.LiveViewTest.open_browser/2` that opens up a browser with the LiveView page
+
+### Backwards incompatible changes
+  - Remove `@inner_content` in components and introduce `render_block` for rendering component `@inner_block`
+  - Remove `@live_module` in socket templates in favor of `@socket.view`
+
+### Bug fixes
+  - Make sure URLs are decoded after they are split
+  - Do not recover forms without inputs
+  - Fix race condition when components are removed and then immediately re-added before the client can notify their CIDs have been destroyed
+  - Do not render LiveView if only events/replies have been added to the socket
+  - Properly merge different components when sharing component subtrees on initial render
+  - Allow variables inside do-blocks to be tainted
+  - Fix `push_redirect` from mount hanging on the client and causing a fallback to full page reload when following a clicked `live_redirect` on the client
+
 ## 0.14.8 (2020-10-30)
 
 ### Bug fixes
   - Fix compatiblity with latest Plug
 
-## 0.14.7
+## 0.14.7 (2020-09-25)
 
 ### Bug fixes
   - Fix `redirect(socket, external: ...)` when returned from an event

@@ -16,6 +16,8 @@ defmodule Phoenix.LiveDashboard.Router do
 
     * `:csp_nonce_assign_key` - an assign key to find the CSP nonce
       value used for assets
+      Supports either `atom()` or
+        `%{optional(:img) => atom(), optional(:script) => atom(), optional(:style) => atom()}`
 
     * `:ecto_repos` - the repositories to show database information.
       Currently only PSQL databases are supported
@@ -162,7 +164,14 @@ defmodule Phoenix.LiveDashboard.Router do
       end
 
     ecto_repos = options[:ecto_repos]
-    csp_nonce_assign_key = options[:csp_nonce_assign_key]
+
+    csp_nonce_assign_key =
+      case options[:csp_nonce_assign_key] do
+        nil -> nil
+        key when is_atom(key) -> %{img: key, style: key, script: key}
+        %{} = keys -> Map.take(keys, [:img, :style, :script])
+      end
+
     allow_destructive_actions = options[:allow_destructive_actions] || false
 
     session_args = [
@@ -172,7 +181,8 @@ defmodule Phoenix.LiveDashboard.Router do
       metrics_history,
       additional_pages,
       request_logger_cookie_domain,
-      ecto_repos
+      ecto_repos,
+      csp_nonce_assign_key
     ]
 
     [
@@ -210,7 +220,8 @@ defmodule Phoenix.LiveDashboard.Router do
         metrics_history,
         additional_pages,
         request_logger_cookie_domain,
-        ecto_repos
+        ecto_repos,
+        csp_nonce_assign_key
       ) do
     metrics_session = %{
       "metrics" => metrics,
@@ -245,7 +256,12 @@ defmodule Phoenix.LiveDashboard.Router do
     %{
       "pages" => pages,
       "allow_destructive_actions" => allow_destructive_actions,
-      "requirements" => requirements |> Enum.concat() |> Enum.uniq()
+      "requirements" => requirements |> Enum.concat() |> Enum.uniq(),
+      "csp_nonces" => %{
+        img: conn.assigns[csp_nonce_assign_key[:img]],
+        style: conn.assigns[csp_nonce_assign_key[:style]],
+        script: conn.assigns[csp_nonce_assign_key[:script]]
+      }
     }
   end
 

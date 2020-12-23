@@ -131,10 +131,12 @@ defmodule Phoenix.LiveViewTest do
   """
 
   @flash_cookie "__phoenix_flash__"
+
   require Phoenix.ConnTest
+  require Phoenix.ChannelTest
 
   alias Phoenix.LiveView.{Diff, Socket}
-  alias Phoenix.LiveViewTest.{ClientProxy, DOM, Element, View}
+  alias Phoenix.LiveViewTest.{ClientProxy, DOM, Element, View, Upload, UploadClient}
 
   @doc """
   Puts connect params to be used on LiveView connections.
@@ -282,7 +284,7 @@ defmodule Phoenix.LiveViewTest do
       live_module: live_module,
       endpoint: endpoint,
       session: maybe_get_session(conn),
-      url: mount_url(endpoint, path),
+      url: Plug.Conn.request_url(conn),
       test_supervisor: fetch_test_supervisor!()
     }
 
@@ -352,10 +354,6 @@ defmodule Phoenix.LiveViewTest do
       _ -> %{}
     end
   end
-
-  defp mount_url(_endpoint, nil), do: nil
-  defp mount_url(endpoint, "/"), do: endpoint.url()
-  defp mount_url(endpoint, path), do: Path.join(endpoint.url(), path)
 
   defp rebuild_path(%Plug.Conn{request_path: request_path, query_string: ""}),
     do: request_path
@@ -476,7 +474,7 @@ defmodule Phoenix.LiveViewTest do
 
       assert view
              |> element("form")
-             |> render_submit(%{deg: 123}) =~ "123 exceeds limits"
+             |> render_submit(%{deg: 123, avatar: upload}) =~ "123 exceeds limits"
 
   To submit a form along with some with hidden input values:
 
@@ -849,16 +847,22 @@ defmodule Phoenix.LiveViewTest do
              |> element("#alarm")
              |> render() == "Snooze"
   """
-  def render(%View{} = view) do
-    render(view, {proxy_topic(view), "render"})
+  def render(view_or_element) do
+    view_or_element
+    |> render_tree()
+    |> DOM.to_html()
   end
 
-  def render(%Element{} = element) do
-    render(element, element)
+  defp render_tree(%View{} = view) do
+    render_tree(view, {proxy_topic(view), "render"})
   end
 
-  defp render(view_or_element, topic_or_element) do
-    call(view_or_element, {:render_element, :find_element, topic_or_element}) |> DOM.to_html()
+  defp render_tree(%Element{} = element) do
+    render_tree(element, element)
+  end
+
+  defp render_tree(view_or_element, topic_or_element) do
+    call(view_or_element, {:render_element, :find_element, topic_or_element})
   end
 
   defp call(view_or_element, tuple) do
@@ -922,6 +926,84 @@ defmodule Phoenix.LiveViewTest do
   """
   def form(%View{proxy: proxy}, selector, form_data \\ %{}) when is_binary(selector) do
     %Element{proxy: proxy, selector: selector, form_data: form_data}
+  end
+
+  @doc """
+  Builds a file input for testing uploads within a form.
+
+  Given the form DOM selector, the upload name, and a list of maps of client metadata
+  for the upload, the returned file input can be passed to `render_upload/2`.
+
+  Client metadata takes the following form:
+
+    * `:last_modified` - the last modified timestamp
+    * `:name` - the name of the file
+    * `:content` - the binary content of the file
+    * `:size` - the byte size of the content
+    * `:type` - the MIME type of the file
+
+  ## Examples
+
+      avatar = file_input(lv, "#my-form-id", :avatar, [%{
+        last_modified: 1_594_171_879_000,
+        name: "myfile.jpeg",
+        content: File.read!("myfile.jpg"),
+        size: 1_396_009,
+        type: "image/jpeg"
+      }])
+
+      assert render_upload(avatar, "foo.jpeg") =~ "100%"
+  """
+  defmacro file_input(view, form_selector, name, entries) do
+    quote bind_quoted: [view: view, selector: form_selector, name: name, entries: entries] do
+      cid = Phoenix.LiveViewTest.__find_cid__!(view, selector)
+      case Phoenix.LiveView.Channel.fetch_upload_config(view.pid, name, cid) do
+        {:ok, %{external: false}} ->
+          require Phoenix.ChannelTest
+          builder = fn -> Phoenix.ChannelTest.connect(Phoenix.LiveView.Socket, %{}, %{}) end
+          Phoenix.LiveViewTest.__start_upload_client__(builder, view, selector, name, entries, cid)
+
+        {:ok, %{external: func}} when is_function(func) ->
+          Phoenix.LiveViewTest.__start_external_upload_client__(view, selector, name, entries, cid)
+
+        :error ->
+          raise "no uploads allowed for #{name}"
+      end
+    end
+  end
+
+  def __find_cid__!(view, selector) do
+    html_tree = view |> render() |> DOM.parse()
+    case DOM.maybe_one(html_tree, selector) do
+      {:ok, form} -> if str = DOM.component_id(form), do: String.to_integer(str)
+      {:error, _reason, msg} -> raise ArgumentError, msg
+    end
+  end
+
+  def __start_upload_client__(socket_builder, view, form_selector, name, entries, cid) do
+    spec = %{
+      id: make_ref(),
+      start:
+        {UploadClient, :start_link,
+         [[socket_builder: socket_builder, cid: cid]]},
+      restart: :temporary
+    }
+
+    {:ok, pid} = Supervisor.start_child(fetch_test_supervisor!(), spec)
+
+    Upload.new(pid, view, form_selector, name, entries, cid)
+  end
+
+  def __start_external_upload_client__(view, form_selector, name, entries, cid) do
+    spec = %{
+      id: make_ref(),
+      start:
+        {UploadClient, :start_link,
+         [[cid: cid]]},
+      restart: :temporary
+    }
+    {:ok, pid} = Supervisor.start_child(fetch_test_supervisor!(), spec)
+    Upload.new(pid, view, form_selector, name, entries, cid)
   end
 
   @doc """
@@ -1033,6 +1115,100 @@ defmodule Phoenix.LiveViewTest do
   end
 
   @doc """
+  Open the default browser to display current HTML of `view_or_element`.
+
+  ## Examples
+
+      view
+      |> element("#term a:first-child()", "Increment")
+      |> open_browser()
+
+      assert view
+             |> form("#term", user: %{name: "hello"})
+             |> open_browser()
+             |> render_submit() =~ "Name updated"
+
+  """
+  def open_browser(view_or_element, open_fun \\ &open_with_system_cmd/1)
+
+  def open_browser(view_or_element, open_fun) when is_function(open_fun, 1) do
+    html = render_tree(view_or_element)
+
+    view_or_element
+    |> maybe_wrap_html(html)
+    |> write_tmp_html_file()
+    |> open_fun.()
+
+    view_or_element
+  end
+
+  defp maybe_wrap_html(view_or_element, content) do
+    {html, static_path} = call(view_or_element, :html)
+
+    head =
+      case DOM.maybe_one(html, "head") do
+        {:ok, head} -> head
+        _ -> {"head", [], []}
+      end
+
+    case Floki.attribute(content, "data-phx-main") do
+      ["true" | _] ->
+        # If we are rendering the main LiveView,
+        # we return the full page html.
+        html
+      _ ->
+        # Otherwise we build a basic html structure around the
+        # view_or_element content.
+        [
+          {"html", [], [
+             head,
+             {"body", [], [
+               content
+             ]}
+          ]}
+        ]
+    end
+    |> Floki.traverse_and_update(fn
+      {"script", _, _} -> nil
+      {"a", _, _} = link -> link
+      {el, attrs, children} -> {el, maybe_prefix_static_path(attrs, static_path), children}
+      el -> el
+    end)
+  end
+
+  defp maybe_prefix_static_path(attrs, nil), do: attrs
+
+  defp maybe_prefix_static_path(attrs, static_path) do
+    Enum.map(attrs, fn
+      {"src", path} -> {"src", prefix_static_path(path, static_path)}
+      {"href", path} -> {"href", prefix_static_path(path, static_path)}
+      attr -> attr
+    end)
+  end
+
+  defp prefix_static_path(<<"//" <> _::binary>> = url, _prefix), do: url
+  defp prefix_static_path(<<"/" <> _::binary>> = path, prefix), do: "file://#{Path.join([prefix, path])}"
+  defp prefix_static_path(url, _), do: url
+
+  defp write_tmp_html_file(html) do
+    html = Floki.raw_html(html)
+    path = Path.join([System.tmp_dir!(), "#{Phoenix.LiveView.Utils.random_id()}.html"])
+    File.write!(path, html)
+    path
+  end
+
+  defp open_with_system_cmd(path) do
+    cmd =
+      case :os.type() do
+        {:unix, :darwin} -> "open"
+        {:unix, _} -> "xdg-open"
+        {:win32, _} -> "start"
+      end
+
+    System.cmd(cmd, [path])
+  end
+
+  @doc """
   Asserts an event will be pushed within `timeout`.
 
   ## Examples
@@ -1125,5 +1301,77 @@ defmodule Phoenix.LiveViewTest do
   end
 
   defp proxy_pid(%{proxy: {_ref, _topic, pid}}), do: pid
+
   defp proxy_topic(%{proxy: {_ref, topic, _pid}}), do: topic
+
+  @doc """
+  Peforms an upload of a file input and renders the result.
+
+  See `file_input/4` for details on building a file input.
+
+  ## Examples
+
+  Given the following LiveView template:
+
+      <%= for entry <- @uploads.avatar.entries %>
+          <%=entry.name %>: <%= entry.progress %>%
+      <% end %>
+
+  Your test case can assert the uploaded content:
+
+      avatar = file_input(lv, "my-form-id", :avatar, %{
+        last_modified: 1_594_171_879_000,
+        name: "myfile.jpeg",
+        content: File.read!("myfile.jpg"),
+        size: 1_396_009,
+        type: "image/jpeg"
+      })
+
+      assert render_upload(avatar, "foo.jpeg") =~ "100%"
+
+  By default, the entire file is chunked to the server, but an optional
+  percentage to chunk can be passed to test chunk-by-chunk uploads:
+
+      assert render_upload(avatar, "foo.jpeg", 49) =~ "49%"
+      assert render_upload(avatar, "foo.jpeg", 51) =~ "100%"
+  """
+  def render_upload(%Upload{} = upload, entry_name, percent \\ 100) do
+    if UploadClient.allow_acknowledged?(upload) do
+      render_chunk(upload, entry_name, percent)
+    else
+      case preflight_upload(upload) do
+        {:ok, %{ref: ref, config: config, entries: entries_resp}} ->
+          case UploadClient.allowed_ack(upload, ref, config, entries_resp) do
+            :ok -> render_chunk(upload, entry_name, percent)
+            {:error, reason} -> {:error, reason}
+          end
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  @doc """
+  Performs a preflight upload request.
+
+  Useful for testing external uploaders to retrieve the `:external` entry metadata.
+
+  ## Examples
+
+      avatar = file_input(lv, "form", :avatar, %{name: ..., ...})
+      assert {:ok, %{ref: _ref, config: %{chunk_size: _}}} = preflight_upload(avatar)
+  """
+  def preflight_upload(%Upload{} = upload) do
+    # LiveView channel returns error conditions as error key in payload, ie `%{error: reason}`
+    case call(upload.element, {:render_event, upload.element, :allow_upload, {upload.entries, upload.cid}}) do
+      %{error: reason} -> {:error, reason}
+      %{ref: _ref} = resp -> {:ok, resp}
+    end
+  end
+
+  defp render_chunk(upload, entry_name, percent) do
+    :ok = UploadClient.chunk(upload, entry_name, percent, proxy_pid(upload.view))
+    render(upload.view)
+  end
 end

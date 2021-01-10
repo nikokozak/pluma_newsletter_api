@@ -57,7 +57,7 @@ defmodule PlumaApiWeb.MailchimpController do
     sub = Subscriber.with_email(params["data"]["email"]) 
           |> Repo.one
 
-    Logger.info("New unsubscribe event received: #{Map.get(sub, :email)}")
+    Logger.info("New unsubscribe event received: #{params["data"]["email"]}")
     Logger.info("Attempting to delete #{inspect(sub)}")
 
     conn

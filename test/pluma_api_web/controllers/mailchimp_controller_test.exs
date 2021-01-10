@@ -70,27 +70,13 @@ defmodule PlumaApiWeb.MailchimpControllerTest do
     assert is_nil(subscriber)
   end
 
-  @tag :skip
+  @tag 
   test "MailchimpController.handle_event: unsubscribe, no subscriber present", %{ conn: conn } do
-    {:ok, subscriber} =
-      Subscriber.insert_changeset(%Subscriber{}, %{
-        email: Faker.Internet.email,
-        rid: Nanoid.generate(),
-        mchimp_id: Nanoid.generate(),
-        list: "4cc41938a8"
-      }) |> Repo.insert
-
-    call = make_unsubscribe_call(subscriber.email, subscriber.rid)
+    call = make_unsubscribe_call(Faker.Internet.email(), Nanoid.generate())
 
     conn = post(conn, Routes.mailchimp_path(conn, :handle_event), call)
 
-    assert json_response(conn, 200)
-
-    subscriber =
-      Subscriber.with_email(subscriber.email)
-      |> Repo.one
-
-    assert is_nil(subscriber)
+    assert json_response(conn, 202)
   end
 
   defp make_subscribe_call(email, rid, parent_rid \\ "") do

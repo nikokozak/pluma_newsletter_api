@@ -1,6 +1,6 @@
 {application,phoenix_live_dashboard,
-             [{applications,[kernel,stdlib,elixir,logger,telemetry_metrics,
-                             phoenix_html,phoenix_live_view]},
+             [{applications,[kernel,stdlib,elixir,logger,phoenix_live_view,
+                             telemetry_metrics,phoenix_html]},
               {description,"Real-time performance dashboard for Phoenix"},
               {modules,['Elixir.Inspect.Phoenix.LiveDashboard.PageLive',
                         'Elixir.Phoenix.LiveDashboard',
@@ -43,5 +43,5 @@
                         'Elixir.Phoenix.LiveDashboard.TitleBarComponent',
                         'Elixir.Phoenix.LiveDashboard.Web']},
               {registered,[]},
-              {vsn,"0.3.6"},
+              {vsn,"0.4.0"},
               {mod,{'Elixir.Phoenix.LiveDashboard.Application',[]}}]}.

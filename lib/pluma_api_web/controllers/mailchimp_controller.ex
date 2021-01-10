@@ -59,14 +59,27 @@ defmodule PlumaApiWeb.MailchimpController do
 
     Logger.info("New unsubscribe event received: #{Map.get(sub, :email)}")
     Logger.info("Attempting to delete #{inspect(sub)}")
+
+    conn
+    |> maybe_delete_subscriber_from_db(sub)
+  end
+
+  defp maybe_delete_subscriber_from_db(conn, nil) do
+    Logger.info("No subscriber with given email found for unsubscribe in DB")
+    conn
+    |> put_status(202)
+    |> json(%{ status: "error", detail: "no user" })
+  end
+
+  defp maybe_delete_subscriber_from_db(conn, sub) do
     case Repo.delete(sub) do
       {:ok, deleted} ->
-        Logger.info("Successfully deleted #{Map.get(sub, :email)} from database.")
+        Logger.info("Successfully deleted #{Map.get(deleted, :email)} from database.")
         conn
         |> put_status(200)
-        |> json(%{ status: "deleted", email: deleted.email })
+        |> json(%{ status: "deleted", email: Map.get(deleted, :email) })
       {:error, changeset} ->
-        Logger.warn("There was an error attempting to delete #{Map.get(sub, :email)} from the database.")
+        Logger.warn("There was an error attempting to delete a user from the database.")
         IO.inspect(changeset)
         conn
         |> put_status(202)

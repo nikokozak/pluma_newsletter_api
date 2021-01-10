@@ -2,7 +2,9 @@ defmodule PlumaApiWeb.ErrorController do
   use PlumaApiWeb, :controller
 
   def not_found(conn, _) do
-    send(conn, "Not Found")
+    conn
+    |> put_status(404)
+    |> json(%{ error: "Not Found"})
   end
   
 end

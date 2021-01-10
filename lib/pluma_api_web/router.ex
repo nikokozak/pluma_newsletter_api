@@ -6,7 +6,6 @@ defmodule PlumaApiWeb.Router do
   end
 
   pipeline :form do
-    plug CORSPlug, origin: ["https://wordpress-525123-1671422.cloudwaysapps.com/", "https://pluma.cc"]
     plug :accepts, ["json"]
   end
 
@@ -32,6 +31,12 @@ defmodule PlumaApiWeb.Router do
     pipe_through :form
 
     get "/test_me", TestController, :test_get
+  end
+
+  scope "/", PlumaApiWeb do
+    pipe_through :api
+    get "/", ErrorController, :not_found
+    get "/:any", ErrorController, :not_found
   end
 
 end

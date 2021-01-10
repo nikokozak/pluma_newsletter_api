@@ -5,10 +5,6 @@ defmodule PlumaApiWeb.Router do
     plug :accepts, ["json"]
   end
 
-  pipeline :form do
-    plug :accepts, ["json"]
-  end
-
   scope "/api", PlumaApiWeb do
     pipe_through :api
 
@@ -22,19 +18,17 @@ defmodule PlumaApiWeb.Router do
     # and is used to get info on a given subscriber (referees)
     get "/subscriber", SubscriberController, :subscriber_details
 
+    # handle form submission from website
+    post "/subscriber", SubscriberController, :new_subscriber
+
     # test routes to check whether application is responding
     get "/test_me", TestController, :test_get
     post "/test_me", TestController, :test_post
   end
 
-  scope "/form", PlumaApiWeb do
-    pipe_through :form
-
-    get "/test_me", TestController, :test_get
-  end
-
+  # Catch-all error replies
   scope "/", PlumaApiWeb do
-    pipe_through :api
+
     get "/", ErrorController, :not_found
     get "/:any", ErrorController, :not_found
   end

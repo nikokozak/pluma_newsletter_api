@@ -41,6 +41,19 @@ defmodule PlumaApi.MailchimpRepo do
   end
 
   @doc """
+  Adds a given `Subscriber` to the mailchimp audience. If `test` parameter is passed as "true",
+  then the `Subscriber` is assigned a "Test" tag in the audience, making it easy to remove them.
+  """
+  def add_to_mc_audience(subscriber, list_id) do
+    HTTPoison.post(
+      @base_url <> "lists/" <> list_id <> "/members",
+      encode(subscriber, false),
+      [],
+      [hackney: @hackney_auth]
+    )
+  end
+
+  @doc """
   Adds tags to a given subscriber in a Mailchimp audience.
   """
   def tag_subscriber(email, list_id, tags) when is_list(tags) do
@@ -187,6 +200,19 @@ defmodule PlumaApi.MailchimpRepo do
       merge_fields: %{
         ID: sub.id,
         RID: sub.rid
+      }
+    })
+  end
+
+  defp encode(%{"email"=> email, "fname" => fname, "lname" => lname, "rid" => rid, "prid" => prid}, false) do
+    Jason.encode!(%{
+      email_address: email,
+      status: "pending",
+      merge_fields: %{
+        FNAME: fname,
+        LNAME: lname,
+        RID: rid,
+        PRID: prid
       }
     })
   end

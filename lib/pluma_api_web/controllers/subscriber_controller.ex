@@ -10,18 +10,22 @@ defmodule PlumaApiWeb.SubscriberController do
     handle_get_subscriber(conn, subscriber_query)
   end
 
-  def subscriber_details(conn, _params = %{"id" => id}) do
-    subscriber_query = Subscriber.with_id(id)
-                 |> Subscriber.preload_referees
-
-    handle_get_subscriber(conn, subscriber_query)
-  end
+# def subscriber_details(conn, _params = %{"id" => id}) do
+#   subscriber_query = Subscriber.with_id(id)
+#                |> Subscriber.preload_referees
+#
+#   handle_get_subscriber(conn, subscriber_query)
+# end
 
   def subscriber_details(conn, _params = %{"rid" => rid}) do
     subscriber_query = Subscriber.with_rid(rid)
                  |> Subscriber.preload_referees()
 
     handle_get_subscriber(conn, subscriber_query)
+  end
+
+  def new_subscriber(_conn, _params) do
+
   end
 
   defp handle_get_subscriber(conn, subscriber_query) do

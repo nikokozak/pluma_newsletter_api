@@ -41,8 +41,11 @@ defmodule PlumaApi.MailchimpRepo do
   end
 
   @doc """
-  Adds a given `Subscriber` to the mailchimp audience. If `test` parameter is passed as "true",
-  then the `Subscriber` is assigned a "Test" tag in the audience, making it easy to remove them.
+  Adds a given subscriber to the mailchimp audience. As opposed to the function above,
+  this version of the function takes in a subscriber as received from a website form - with fields including
+  "email" (mandatory), "fname", "lname", "rid", and "prid". This function is implemented in order to pass
+  form data from our site onto the Mailchimp API. A webhook will be triggered by this, at which point our server
+  adds the subscriber to the local database.
   """
   def add_to_mc_audience(subscriber, list_id) do
     HTTPoison.post(

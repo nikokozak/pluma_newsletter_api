@@ -117,11 +117,12 @@ defmodule PlumaApiWeb.MailchimpController do
         Subscriber.with_rid(child.parent_rid)
         |> Subscriber.preload_referees
         |> Repo.one
-
+      
       maybe_make_vip(parent)
     end
   end
 
+  defp maybe_make_vip(nil), do: :ok
   defp maybe_make_vip(parent) do
     Logger.info("Now checking if parent has enough children for VIP clasification")
     case Map.get(parent, :referees) do

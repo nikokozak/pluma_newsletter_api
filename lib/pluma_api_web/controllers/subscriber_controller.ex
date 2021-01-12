@@ -69,8 +69,8 @@ defmodule PlumaApiWeb.SubscriberController do
   defp reg(type) when is_atom(type) do
     case type do
       :email -> ~r/^[^@\s]+@[^@\s]+\.[^@\s]+$/
-      :fname -> ~r/^\w*$/
-      :lname -> ~r/^\w*$/
+      :fname -> ~r/^[\w\s]*$/
+      :lname -> ~r/^[\w\s]*$/
       :rid -> ~r/^[\w_-]*$/ 
       :prid -> ~r/^[\w_-]*$/
     end

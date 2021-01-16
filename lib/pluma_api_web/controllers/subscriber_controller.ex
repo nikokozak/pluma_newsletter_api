@@ -100,6 +100,9 @@ defmodule PlumaApiWeb.SubscriberController do
       {:ok, %HTTPoison.Response{status_code: 200}} ->
         Logger.info("Successfully added new subscriber #{form_data["email"]} to our Mailchimp List")
         %{status: :ok, detail: :success, stage: :mc}
+      {:ok, %HTTPoison.Response{status_code: 400}} ->
+        Logger.info("Subscriber already added, waiting on email-confirmation for #{form_data["email"]}")
+        %{status: :ok, detail: :pending, stage: :mc}
       {:ok, %HTTPoison.Response{status_code: status_code, body: body}} -> 
         Logger.warn("There was an error adding new subscriber #{form_data["email"]} to our Mailchimp List.")
         Logger.warn("Received a response with code #{status_code} and body #{body}")

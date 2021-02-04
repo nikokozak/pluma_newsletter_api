@@ -86,8 +86,10 @@ defmodule PlumaApiWeb.SubscriberController do
         Logger.info("No trace of new subscriber #{form_data["email"]} found in DB")
         %{status: :ok, data: form_data, stage: :check_exists}
       {true, false} ->
-        Logger.warn("RID entry for #{form_data["email"]} found in DB")
-        %{status: :error, detail: "rid_exists", stage: :check_exists}
+        Logger.warn("RID entry for #{form_data["email"]} found in DB: #{form_data["rid"]}")
+        Logger.warn("Adding new RID to form_data for #{form_data["email"]}")
+        form_data = Map.put(form_data, "rid", "#{Nanoid.generate(10)}")
+        %{status: :ok, data: form_data, stage: :check_exists}
       {_x, _y} -> 
         Logger.warn("RID and Email entry for #{form_data["email"]} found in DB")
         %{status: :error, detail: "email_exists", stage: :check_exists}

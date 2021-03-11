@@ -207,6 +207,21 @@ defmodule PlumaApi.MailchimpRepo do
     })
   end
 
+  # Eventually incorporate this override with the one below - for now just to make sure signup_ip doesn't block adding a sub while testing.
+  defp encode(%{"email"=> email, "fname" => fname, "lname" => lname, "rid" => rid, "prid" => prid, "ip_signup" => ip_signup}, false) do
+    Jason.encode!(%{
+      email_address: email,
+      status: "pending",
+      merge_fields: %{
+        FNAME: fname,
+        LNAME: lname,
+        RID: rid,
+        PRID: prid
+      },
+      ip_signup: ip_signup
+    })
+  end
+
   defp encode(%{"email"=> email, "fname" => fname, "lname" => lname, "rid" => rid, "prid" => prid}, false) do
     Jason.encode!(%{
       email_address: email,

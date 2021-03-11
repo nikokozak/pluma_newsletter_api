@@ -48,6 +48,7 @@ defmodule PlumaApiWeb.SubscriberController do
     |> respond_to_request(conn)
   end
 
+  # TODO: Add validation for ip_signup
   defp validate_fields(form_data = %{"email" => email, "fname" => fname, "lname" => lname, "rid" => rid, "prid" => prid}) do
     with {:email, true} <- is_valid?(:email, email),
          {:fname, true} <- is_valid?(:fname, fname),

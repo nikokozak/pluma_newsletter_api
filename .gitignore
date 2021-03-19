@@ -1,3 +1,4 @@
 ./deps/*
 ./_build/*
 ./subs.sql
+./subs.txt

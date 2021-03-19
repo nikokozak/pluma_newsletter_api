@@ -3,8 +3,11 @@ defmodule PlumaApi.MailchimpRepoTest do
   use PlumaApi.DataCase
   alias PlumaApi.MailchimpRepo
 
+  @moduletag :mailchimp_repo_tests
+
+  ## REMEMBER TO CLEAR TEST SUBSCRIBERS FROM MAILCHIMP AUDIENCE ONCE DONE
+
   @moduledoc """
-  REMEMBER TO CLEAR TEST SUBSCRIBERS FROM MAILCHIMP AUDIENCE ONCE DONE
   """
 
   @main_list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)

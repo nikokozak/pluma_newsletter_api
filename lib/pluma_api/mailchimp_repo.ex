@@ -28,94 +28,9 @@ defmodule PlumaApi.MailchimpRepo do
   end
 
   @doc """
-  Adds a given `Subscriber` to the mailchimp audience. If `test` parameter is passed as "true",
-  then the `Subscriber` is assigned a "Test" tag in the audience, making it easy to remove them.
-  """
-  def add_to_audience(subscriber = %Subscriber{}, list_id, test \\ false) do
-    HTTPoison.post(
-      @base_url <> "lists/" <> list_id <> "/members",
-      encode(subscriber, test),
-      [],
-      [hackney: @hackney_auth]
-    )
-  end
-
-  @doc """
-  Adds a given subscriber to the mailchimp audience. As opposed to the function above,
-  this version of the function takes in a subscriber as received from a website form - with fields including
-  "email" (mandatory), "fname", "lname", "rid", and "prid". This function is implemented in order to pass
-  form data from our site onto the Mailchimp API. A webhook will be triggered by this, at which point our server
-  adds the subscriber to the local database.
-  """
-  def add_to_mc_audience(subscriber, list_id) do
-    HTTPoison.post(
-      @base_url <> "lists/" <> list_id <> "/members",
-      encode(subscriber, false),
-      [],
-      [hackney: @hackney_auth]
-    )
-  end
-
-  @doc """
-  Adds tags to a given subscriber in a Mailchimp audience.
-  """
-  def tag_subscriber(email, list_id, tags) when is_list(tags) do
-    HTTPoison.post(
-      @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email) <> "/tags",
-      Jason.encode(%{ tags: tags, is_syncing: false }) |> elem(1),
-      [],
-      [hackney: @hackney_auth]
-    )
-  end
-
-  @doc """
-  Updates a set of Merge Fields (custom mailchimp subscriber fields) for a given subscriber.
-  """
-  def update_merge_field(email, list_id, merge_fields) when is_map(merge_fields) do
-    HTTPoison.patch(
-      @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
-      Jason.encode(%{merge_fields: merge_fields}) |> elem(1),
-      [],
-      [hackney: @hackney_auth]
-    )
-  end
-
-  @doc """
-  Check whether a given email exists in the provided list.
-  """
-  def check_exists(email, list_id) do
-    {:ok, result} = 
-      HTTPoison.get(
-        @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
-        [],
-        [hackney: @hackney_auth]
-      )
-
-    case result do
-      %HTTPoison.Response{status_code: 200} -> true
-      _other -> false
-    end
-  end
-
-  @doc """
-  Remove a subscriber from a given Mailchimp audience list.
-  """ 
-  def archive_subscriber(email, list_id) do
-    {:ok, result} =
-      HTTPoison.delete(
-        @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
-        [],
-        [hackney: @hackney_auth]
-      )
-
-    case result do
-      %HTTPoison.Response{status_code: 204} -> {:ok, email}
-      error -> {:error, error}
-    end
-  end
-
-  @doc """
   Get the details for a given email address if present in a Mailchimp audience.
+
+  Returns `{:ok, response_body}` if successful, otherwise `{:error, error}`.
   """
   def get_subscriber(email, list_id) do
     {:ok, result} =
@@ -134,9 +49,132 @@ defmodule PlumaApi.MailchimpRepo do
   end
 
   @doc """
+  Adds a given `Subscriber` to the mailchimp audience. If `test` parameter is passed as "true",
+  then the `Subscriber` is assigned a "Test" tag in the audience, making it easy to remove them.
+
+  Returns a `HTTPoison.Response{status_code: 200}` struct if successful.
+  """
+  def add_to_audience(subscriber = %Subscriber{}, list_id, test \\ false) do
+    HTTPoison.post(
+      @base_url <> "lists/" <> list_id <> "/members",
+      encode(subscriber, test),
+      [],
+      [hackney: @hackney_auth]
+    )
+  end
+
+  @doc """
+  Adds a given subscriber to the mailchimp audience. As opposed to the function above,
+  this version of the function takes in a subscriber as received from a website form - with fields including
+  "email" (mandatory), "fname", "lname", "rid", and "prid". This function is implemented in order to pass
+  form data from our site onto the Mailchimp API. A webhook will be triggered by this, at which point our server
+  adds the subscriber to the local database.
+
+  Returns a `HTTPoison.Response{status_code: 200}` struct if successful.
+  """
+  def add_to_mc_audience(subscriber, list_id) do
+    HTTPoison.post(
+      @base_url <> "lists/" <> list_id <> "/members",
+      encode(subscriber, false),
+      [],
+      [hackney: @hackney_auth]
+    )
+  end
+
+  @doc """
+  Adds tags to a given subscriber in a Mailchimp audience.
+
+  Returns a `HTTPoison.Response{status_code: 204}` struct if successful.
+  """
+  def tag_subscriber(email, list_id, tags) when is_list(tags) do
+    HTTPoison.post(
+      @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email) <> "/tags",
+      Jason.encode(%{ tags: tags, is_syncing: false }) |> elem(1),
+      [],
+      [hackney: @hackney_auth]
+    )
+  end
+
+  @doc """
+  Updates a set of Merge Fields (custom mailchimp subscriber fields) for a given subscriber.
+  
+  Returns a `HTTPoison.Response{status_code: 200}` struct if successful.
+  """
+  def update_merge_field(email, list_id, merge_fields) when is_map(merge_fields) do
+    HTTPoison.patch(
+      @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
+      Jason.encode(%{merge_fields: merge_fields}) |> elem(1),
+      [],
+      [hackney: @hackney_auth]
+    )
+  end
+
+  @doc """
+  Check whether a given email exists in the provided list.
+
+  Returns `boolean` true or false.
+  """
+  def check_exists(email, list_id) do
+    {:ok, result} = 
+      HTTPoison.get(
+        @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
+        [],
+        [hackney: @hackney_auth]
+      )
+
+    case result do
+      %HTTPoison.Response{status_code: 200} -> true
+      _other -> false
+    end
+  end
+
+  @doc """
+  Remove a subscriber from a given Mailchimp audience list.
+
+  Returns `{:ok, email}` if successful, `{:error, error}` otherwise.
+  """ 
+  def archive_subscriber(email, list_id) do
+    {:ok, result} =
+      HTTPoison.delete(
+        @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
+        [],
+        [hackney: @hackney_auth]
+      )
+
+    case result do
+      %HTTPoison.Response{status_code: 204} -> {:ok, email}
+      error -> {:error, error}
+    end
+  end
+
+  @doc """
+  Permanently delete a subscriber from a given Mailchimp audience list.
+
+  Deleted subscribers CANNOT be reimported, unlike archived subs.
+
+  Returns `{:ok, email}` if successful, `{:error, error}` otherwise.
+  """ 
+  def delete_subscriber(email, list_id) do
+    {:ok, result} =
+      HTTPoison.post(
+        @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email) <> "/actions/delete-permanent",
+        [],
+        [hackney: @hackney_auth]
+      )
+
+    case result do
+      %HTTPoison.Response{status_code: 204} -> {:ok, email}
+      error -> {:error, error}
+    end
+  end
+
+  @doc """
   WARNING - retrieves up to 1000 subscribers from the main Mailchimp list, 
   wipes out the local database, and recursively re-populates the local database
   with Mailchimp information. 
+
+  AVOID USING FOR NOW, LARGELY UNTESTED/REDUNDANT.
+  TODO :: Write CSV importer
   """
   def normalize_database(skip_this_many_emails \\ 0) do
     call = HTTPoison.get(
@@ -207,7 +245,7 @@ defmodule PlumaApi.MailchimpRepo do
     })
   end
 
-  # Eventually incorporate this override with the one below - for now just to make sure signup_ip doesn't block adding a sub while testing.
+  # Eventually incorporate this override with the one below - for now just to make sure ip_signup doesn't block adding a sub while testing.
   defp encode(%{"email"=> email, "fname" => fname, "lname" => lname, "rid" => rid, "prid" => prid, "ip_signup" => ip_signup}, false) do
     Jason.encode!(%{
       email_address: email,
@@ -222,6 +260,7 @@ defmodule PlumaApi.MailchimpRepo do
     })
   end
 
+  # LEGACY
   defp encode(%{"email"=> email, "fname" => fname, "lname" => lname, "rid" => rid, "prid" => prid}, false) do
     Jason.encode!(%{
       email_address: email,

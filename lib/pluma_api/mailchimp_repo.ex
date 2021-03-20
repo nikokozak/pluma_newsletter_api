@@ -158,6 +158,7 @@ defmodule PlumaApi.MailchimpRepo do
     {:ok, result} =
       HTTPoison.post(
         @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email) <> "/actions/delete-permanent",
+        Jason.encode(%{}) |> elem(1),
         [],
         [hackney: @hackney_auth]
       )

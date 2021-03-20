@@ -96,6 +96,29 @@ defmodule PlumaApi.MailchimpRepo do
   end
 
   @doc """
+  Creates a new Merge Field for subscribers in a list. By default the new merge field
+  is not public and is not a required field.
+
+  Returns a `HTTPoison.Response{status_code: 200}` if successful.
+
+  Of interest is the `merge_id` value returned by Mailchimp on success, which is 
+  required if we want to update the merge field itself in the future.
+  """
+  def create_merge_field(list_id, field_name, field_type) do
+    HTTPoison.post(
+      @base_url <> "lists/" <> list_id <> "/merge-fields",
+      Jason.encode(%{ 
+        name: field_name,
+        type: field_type,
+        required: false,
+        public: false
+      }),
+      [],
+      [hackney: @hackney_auth]
+    )
+  end
+
+  @doc """
   Updates a set of Merge Fields (custom mailchimp subscriber fields) for a given subscriber.
   
   Returns a `HTTPoison.Response{status_code: 200}` struct if successful.

@@ -9,9 +9,9 @@ defmodule PlumaApiWeb.Router do
     pipe_through :api
 
     # Mailchimp webhook endpoints
-    get "/mchimp_webhook", MailchimpController, :test_get
+    get "/mchimp_webhook", MailchimpWebhookController, :test_get
     # This endpoint handles subscribe/unsubscribe events
-    post "/mchimp_webhook", MailchimpController, :handle_event
+    post "/mchimp_webhook", MailchimpWebhookController, :handle_event
 
     # params are passed via the url -> ?email= | ?rid= 
     # normally, this endpoint is hit by our website dashboard,

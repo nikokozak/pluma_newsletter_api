@@ -1,14 +1,14 @@
-defmodule PlumaApiWeb.MailchimpControllerTest do
+defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
   alias PlumaApi.Repo
   alias PlumaApi.Subscriber
   use PlumaApiWeb.ConnCase
 
-  @moduletag :controller
+  @moduletag :mailchimp_webhook_controller_tests
 
-  test "MailchimpController.handle_event: subscribe, good data", %{ conn: conn }do
+  test "MailchimpWebhookController.handle_event: subscribe, good data", %{ conn: conn }do
     call = make_subscribe_call(Faker.Internet.email(), Nanoid.generate())
 
-    conn = post(conn, Routes.mailchimp_path(conn, :handle_event), call)
+    conn = post(conn, Routes.mailchimp_webhook_path(conn, :handle_event), call)
 
     assert json_response(conn, 200)
 
@@ -20,46 +20,24 @@ defmodule PlumaApiWeb.MailchimpControllerTest do
     assert subscriber.rid == call["data"]["merges"]["RID"]
   end
 
-  @tag :skip # This test is failing, for some reason Postgres isn't catching the duplicate. 
-            # Works in production though.
-  test "MailchimpController.handle_event: subscribe, sub already in DB", %{ conn: conn }do
-    call = make_subscribe_call(Faker.Internet.email(), Nanoid.generate())
+  test "MailchimpWebhookController.handle_event: subscribe, sub already in DB", %{ conn: conn }do
+    {:ok, subscriber} = Subscriber.insert_changeset(%Subscriber{}, PlumaApi.Factory.subscriber())
+                 |> Repo.insert
 
-    conn_initial = post(conn, Routes.mailchimp_path(conn, :handle_event), call)
+    call_with_same_email = make_subscribe_call(subscriber.email, Nanoid.generate())
 
-    assert json_response(conn_initial, 200)
+    conn = post(conn, Routes.mailchimp_webhook_path(conn, :handle_event), call_with_same_email)
 
-    call_with_same_email = make_subscribe_call(call["data"]["email"], Nanoid.generate())
-
-    conn_duplicate = post(conn, Routes.mailchimp_path(conn, :handle_event), call_with_same_email)
-
-    find_duplicate = Subscriber.with_email(call["data"]["email"])
-                     |> Repo.all
-
-    IO.inspect(find_duplicate)
-
-    assert json_response(conn_duplicate, 202)
-
-    subscriber = 
-      Subscriber.with_email(call["data"]["email"])
-      |> Repo.one
-
-    assert not is_nil(subscriber)
-    assert subscriber.rid == call["data"]["merges"]["RID"]
+    assert json_response(conn, 202) #Respond with a 202, subscriber is present.
   end
 
-  test "MailchimpController.handle_event: unsubscribe, good data", %{ conn: conn } do
-    {:ok, subscriber} =
-      Subscriber.insert_changeset(%Subscriber{}, %{
-        email: Faker.Internet.email,
-        rid: Nanoid.generate(),
-        mchimp_id: Nanoid.generate(),
-        list: "4cc41938a8"
-      }) |> Repo.insert
+  test "MailchimpWebhookController.handle_event: unsubscribe, good data", %{ conn: conn } do
+    {:ok, subscriber} = Subscriber.insert_changeset(%Subscriber{}, PlumaApi.Factory.subscriber())
+                        |> Repo.insert
 
     call = make_unsubscribe_call(subscriber.email, subscriber.rid)
 
-    conn = post(conn, Routes.mailchimp_path(conn, :handle_event), call)
+    conn = post(conn, Routes.mailchimp_webhook_path(conn, :handle_event), call)
 
     assert json_response(conn, 200)
 
@@ -70,11 +48,10 @@ defmodule PlumaApiWeb.MailchimpControllerTest do
     assert is_nil(subscriber)
   end
 
-  @tag 
   test "MailchimpController.handle_event: unsubscribe, no subscriber present", %{ conn: conn } do
     call = make_unsubscribe_call(Faker.Internet.email(), Nanoid.generate())
 
-    conn = post(conn, Routes.mailchimp_path(conn, :handle_event), call)
+    conn = post(conn, Routes.mailchimp_webhook_path(conn, :handle_event), call)
 
     assert json_response(conn, 202)
   end

@@ -1,4 +1,4 @@
-defmodule PlumaApiWeb.MailchimpController do
+defmodule PlumaApiWeb.MailchimpWebhookController do
   require Logger
   use PlumaApiWeb, :controller
   alias PlumaApi.Subscriber

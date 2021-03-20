@@ -18,7 +18,7 @@
                         'Elixir.PlumaApiWeb.ErrorHelpers',
                         'Elixir.PlumaApiWeb.ErrorView',
                         'Elixir.PlumaApiWeb.Gettext',
-                        'Elixir.PlumaApiWeb.MailchimpController',
+                        'Elixir.PlumaApiWeb.MailchimpWebhookController',
                         'Elixir.PlumaApiWeb.Router',
                         'Elixir.PlumaApiWeb.Router.Helpers',
                         'Elixir.PlumaApiWeb.SubscriberController',

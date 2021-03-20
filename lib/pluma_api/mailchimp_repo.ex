@@ -14,10 +14,16 @@ defmodule PlumaApi.MailchimpRepo do
 
   The hackney option is passed into HTTPoison in order to generate the correct authorization
   protocol.
+
+  All functions return either a `{:ok, HTTPoison.Response{}}` or `{:error, HTTPoison.Reponse{}}`
+  tuple. This is done to save us some effort in checking the return status codes, which vary
+  from API call to API call (i.e. some return 200 vs. 204). 
   """
 
   @doc """
   Checks to see if the Mailchimp API is responding.
+
+  Returns an `HTTPoison.Response{status_code: 200}` if successful.
   """
   def check_health() do
     HTTPoison.get(

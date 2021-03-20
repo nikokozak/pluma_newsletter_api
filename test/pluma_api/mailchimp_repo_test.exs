@@ -2,6 +2,7 @@ defmodule PlumaApi.MailchimpRepoTest do
   alias PlumaApi.Subscriber
   use PlumaApi.DataCase
   alias PlumaApi.MailchimpRepo
+  use PlumaApi.TestUtils
 
   @moduletag :mailchimp_repo_tests
   @main_list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
@@ -11,20 +12,7 @@ defmodule PlumaApi.MailchimpRepoTest do
   # In appropriate tests, we add a @tag push_sub: PlumaApi.Factory.subscriber()
   # which becomes available to the testing function via the test context.
   # The subscriber is then deleted via the `on_exit/2` callback
-  setup :remove_test_subs_from_mailchimp
-
-  defp remove_test_subs_from_mailchimp(%{test_sub: test_sub}) do
-    on_exit(fn -> 
-      IO.puts("Deleting test email #{test_sub.email} from Mailchimp API")
-      case MailchimpRepo.delete_subscriber(test_sub.email, @main_list_id) do
-        {:ok, _email} -> IO.puts("Deleted #{test_sub.email} succesfully")
-        {:error, error} -> 
-          {:ok, error_body} = Jason.decode(error.body)
-          IO.puts("Could not delete #{test_sub.email}. Status was #{error_body["status"]}")
-      end
-    end)
-  end
-  defp remove_test_subs_from_mailchimp(_context), do: :ok
+  # setup :remove_test_subs_from_mailchimp
 
   test "MailchimpRepo.check_health/0" do 
     {:ok, %HTTPoison.Response{status_code: 200}} = MailchimpRepo.check_health

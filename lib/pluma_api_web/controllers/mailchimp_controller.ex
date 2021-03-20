@@ -5,6 +5,11 @@ defmodule PlumaApiWeb.MailchimpController do
   alias PlumaApi.Repo
   alias PlumaApi.MailchimpRepo
 
+  @moduledoc """
+  Functions that handle Mailchimp webhooks. Used to keep our local database in sync
+  with our Mailchimp Audience.
+  """
+
   @list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
 
   def test_get(conn, _params) do

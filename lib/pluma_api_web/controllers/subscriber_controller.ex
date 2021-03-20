@@ -4,21 +4,14 @@ defmodule PlumaApiWeb.SubscriberController do
   alias PlumaApiWeb.ErrorView
   alias PlumaApi.{Subscriber, Repo}
 
-  def subscriber_details(conn, _params = %{"email" => email}) do
+  def get_subscriber(conn, _params = %{"email" => email}) do
     subscriber_query = Subscriber.with_email(email)
                  |> Subscriber.preload_referees
     
     handle_get_subscriber(conn, subscriber_query)
   end
 
-# def subscriber_details(conn, _params = %{"id" => id}) do
-#   subscriber_query = Subscriber.with_id(id)
-#                |> Subscriber.preload_referees
-#
-#   handle_get_subscriber(conn, subscriber_query)
-# end
-
-  def subscriber_details(conn, _params = %{"rid" => rid}) do
+  def get_subscriber(conn, _params = %{"rid" => rid}) do
     subscriber_query = Subscriber.with_rid(rid)
                  |> Subscriber.preload_referees()
 

@@ -16,7 +16,7 @@ defmodule PlumaApiWeb.Router do
     # params are passed via the url -> ?email= | ?rid= 
     # normally, this endpoint is hit by our website dashboard,
     # and is used to get info on a given subscriber (referees)
-    get "/subscriber", SubscriberController, :subscriber_details
+    get "/subscriber", SubscriberController, :get_subscriber
 
     # handle form submission from website
     post "/subscriber", SubscriberController, :new_subscriber

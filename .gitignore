@@ -2,3 +2,5 @@
 ./_build/*
 ./subs.sql
 ./subs.txt
+subs.txt
+subs.sql

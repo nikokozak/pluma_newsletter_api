@@ -70,7 +70,7 @@ defmodule PlumaApi.MailchimpRepo do
   Adds a given `Subscriber` to the mailchimp audience. If `test` parameter is passed as "true",
   then the `Subscriber` is assigned a "Test" tag in the audience, making it easy to remove them.
 
-  Returns a `HTTPoison.Response{status_code: 200}` struct if successful.
+  Returns a `{:ok, repsonse_body}` struct if successful, otherwise `{:error, :error_response}`
   """
   def add_to_audience(subscriber = %Subscriber{}, list_id, test \\ false) do
     HTTPoison.post!(
@@ -271,8 +271,8 @@ defmodule PlumaApi.MailchimpRepo do
       email_address: sub.email,
       status: "subscribed",
       merge_fields: %{
-        ID: sub.id,
-        RID: sub.rid
+        RID: sub.rid,
+        PRID: sub.parent_rid
       }
     })
   end
@@ -283,8 +283,8 @@ defmodule PlumaApi.MailchimpRepo do
       status: "subscribed",
       tags: ["Test"],
       merge_fields: %{
-        ID: sub.id,
-        RID: sub.rid
+        RID: sub.rid,
+        PRID: sub.parent_rid
       }
     })
   end
@@ -304,6 +304,22 @@ defmodule PlumaApi.MailchimpRepo do
     })
   end
 
+  # Eventually incorporate this override with the one below - for now just to make sure ip_signup doesn't block adding a sub while testing.
+  defp encode(%{"email"=> email, "fname" => fname, "lname" => lname, "rid" => rid, "prid" => prid, "ip_signup" => ip_signup}, true) do
+    Jason.encode!(%{
+      email_address: email,
+      status: "pending",
+      tags: ["Test"],
+      merge_fields: %{
+        FNAME: fname,
+        LNAME: lname,
+        RID: rid,
+        PRID: prid
+      },
+      ip_signup: ip_signup
+    })
+  end
+  
   # LEGACY
   defp encode(%{"email"=> email, "fname" => fname, "lname" => lname, "rid" => rid, "prid" => prid}, false) do
     Jason.encode!(%{

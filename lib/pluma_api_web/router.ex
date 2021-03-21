@@ -13,6 +13,8 @@ defmodule PlumaApiWeb.Router do
     # This endpoint handles subscribe/unsubscribe events
     post "/mchimp_webhook", MailchimpWebhookController, :handle_event
 
+    post "/mchimp_webhook_v2", MailchimpWebhookController, :handle
+
     # params are passed via the url -> ?email= | ?rid= 
     # normally, this endpoint is hit by our website dashboard,
     # and is used to get info on a given subscriber (referees)

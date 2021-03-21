@@ -4,35 +4,8 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
   use PlumaApiWeb.ConnCase
   use PlumaApi.TestUtils
 
-  ## MOST OF THESE TESTS DEPEND ON MAILCHIMPREPO
   @moduletag :mailchimp_webhook_controller_tests
   @list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
-
-  test "MailchimpWebhookController.handle_event: subscribe, good data", %{ conn: conn }do
-    call = make_subscribe_call(Faker.Internet.email(), Nanoid.generate())
-
-    conn = post(conn, Routes.mailchimp_webhook_path(conn, :handle_event), call)
-
-    assert json_response(conn, 200)
-
-    subscriber = 
-      Subscriber.with_email(call["data"]["email"])
-      |> Repo.one
-
-    assert not is_nil(subscriber)
-    assert subscriber.rid == call["data"]["merges"]["RID"]
-  end
-
-  test "MailchimpWebhookController.handle_event: subscribe, sub already in DB", %{ conn: conn }do
-    {:ok, subscriber} = Subscriber.insert_changeset(%Subscriber{}, PlumaApi.Factory.subscriber())
-                 |> Repo.insert
-
-    call_with_same_email = make_subscribe_call(subscriber.email, Nanoid.generate())
-
-    conn = post(conn, Routes.mailchimp_webhook_path(conn, :handle_event), call_with_same_email)
-
-    assert json_response(conn, 202) #Respond with a 202, subscriber is present.
-  end
 
   #If an external subscriber is received, and includes an RID, said subscriber should
   #be added to our DB.
@@ -122,23 +95,7 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
     assert sub["merge_fields"]["RID"] == subscriber.rid
   end
 
-  test "MailchimpWebhookController.handle_event: unsubscribe, good data", %{ conn: conn } do
-    {:ok, subscriber} = Subscriber.insert_changeset(%Subscriber{}, PlumaApi.Factory.subscriber())
-                        |> Repo.insert
-
-    call = make_unsubscribe_call(subscriber.email, subscriber.rid)
-
-    conn = post(conn, Routes.mailchimp_webhook_path(conn, :handle_event), call)
-
-    assert json_response(conn, 200)
-
-    subscriber =
-      Subscriber.with_email(subscriber.email)
-      |> Repo.one
-
-    assert is_nil(subscriber)
-  end
-
+  # Simply delete the subscriber if call is correct.
   test "MailchimpWebhookController.handle: unsubscribe, good data", %{ conn: conn } do
     {:ok, subscriber} = Subscriber.insert_changeset(%Subscriber{}, PlumaApi.Factory.subscriber())
                         |> Repo.insert
@@ -156,18 +113,11 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
     assert is_nil(subscriber)
   end
 
-  test "MailchimpController.handle_event: unsubscribe, no subscriber present", %{ conn: conn } do
-    call = make_unsubscribe_call(Faker.Internet.email(), Nanoid.generate())
-
-    conn = post(conn, Routes.mailchimp_webhook_path(conn, :handle_event), call)
-
-    assert json_response(conn, 202)
-  end
-
+  # Don't do anything, return 202 if call is incorrect.
   test "MailchimpController.handle: unsubscribe, no subscriber present", %{ conn: conn } do
     call = make_unsubscribe_call(Faker.Internet.email(), Nanoid.generate())
 
-    conn = post(conn, Routes.mailchimp_webhook_path(conn, :handle_event), call)
+    conn = post(conn, Routes.mailchimp_webhook_path(conn, :handle), call)
 
     assert json_response(conn, 202)
   end

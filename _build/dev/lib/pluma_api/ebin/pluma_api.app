@@ -3,7 +3,7 @@
                              phoenix,phoenix_ecto,ecto_sql,postgrex,
                              phoenix_live_dashboard,telemetry_metrics,
                              telemetry_poller,gettext,jason,plug_cowboy,
-                             httpoison,nanoid,cors_plug]},
+                             httpoison,nanoid,cors_plug,sage]},
               {description,"pluma_api"},
               {modules,['Elixir.Jason.Encoder.PlumaApi.Subscriber',
                         'Elixir.PlumaApi','Elixir.PlumaApi.Application',

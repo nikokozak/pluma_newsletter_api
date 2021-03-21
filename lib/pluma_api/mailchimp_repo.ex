@@ -12,25 +12,44 @@ defmodule PlumaApi.MailchimpRepo do
   wish to work with, and can be found in the `main_list_id` variable of the `config.exs`
   file.
 
-  The hackney option is passed into HTTPoison in order to generate the correct authorization
+  The hackney option is passed into HTTPoison internally in order to generate the correct authorization
   protocol.
 
-  All functions return either a `{:ok, HTTPoison.Response{}}` or `{:error, HTTPoison.Reponse{}}`
+  All functions return either a `{:ok, response_body :: %{}}` or `{:error, response_body :: %{}}`
   tuple. This is done to save us some effort in checking the return status codes, which vary
   from API call to API call (i.e. some return 200 vs. 204). 
+
+  Internally, all functions will raise in case of connection failures (but won't raise if a resource
+  wasn't found by the Mailchimp API for example).
   """
+
+  @type success_response() :: {:ok, response_body :: map}
+  @type error_response() :: {:error, response_body :: map}
+
+  @spec check_health() :: success_response | error_response
+  @spec get_subscriber(email :: String.t, list_id :: String.t) :: success_response | error_response
+  @spec add_to_audience(subscriber :: %Subscriber{}, list_id :: String.t, test :: boolean()) :: success_response | error_response
+  @spec add_to_mc_audience(subscriber :: map, list_id :: String.t) :: success_response | error_response
+  @spec tag_subscriber(email :: String.t, list_id :: String.t, tags :: list(%{name: String.t, status: String.t})) :: success_response | error_response
+  @spec create_merge_field(list_id :: String.t, field_name :: String.t, field_type :: String.t) :: success_response | error_response
+  @spec update_merge_field(email :: String.t, list_id :: String.t, merge_fields :: map) :: success_response | error_response
+  @spec check_exists(email :: String.t, list_id :: String.t) :: boolean
+  @spec archive_subscriber(email :: String.t, list_id :: String.t) :: success_response | error_response
+  @spec delete_subscriber(email :: String.t, list_id :: String.t) :: success_response | error_response
 
   @doc """
   Checks to see if the Mailchimp API is responding.
 
-  Returns an `HTTPoison.Response{status_code: 200}` if successful.
+  Returns an `{:ok, %{"health_status" => health_status :: string}}` if successful, and
+  `{:error, error_body :: %{}}` if not.
   """
   def check_health() do
-    HTTPoison.get(
+    HTTPoison.get!(
       @base_url <> "ping",
       [],
       [hackney: @hackney_auth]
     )
+    |> process_response
   end
 
   @doc """
@@ -39,19 +58,12 @@ defmodule PlumaApi.MailchimpRepo do
   Returns `{:ok, response_body}` if successful, otherwise `{:error, error}`.
   """
   def get_subscriber(email, list_id) do
-    {:ok, result} =
-      HTTPoison.get(
-        @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
-        [],
-        [hackney: @hackney_auth]
-      )
-
-    case result do
-      %HTTPoison.Response{status_code: 200, body: body} ->
-        {:ok, body}
-      error ->
-        {:error, error}
-    end
+    HTTPoison.get!(
+      @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
+      [],
+      [hackney: @hackney_auth]
+    )
+    |> process_response
   end
 
   @doc """
@@ -61,12 +73,13 @@ defmodule PlumaApi.MailchimpRepo do
   Returns a `HTTPoison.Response{status_code: 200}` struct if successful.
   """
   def add_to_audience(subscriber = %Subscriber{}, list_id, test \\ false) do
-    HTTPoison.post(
+    HTTPoison.post!(
       @base_url <> "lists/" <> list_id <> "/members",
       encode(subscriber, test),
       [],
       [hackney: @hackney_auth]
     )
+    |> process_response
   end
 
   @doc """
@@ -79,12 +92,13 @@ defmodule PlumaApi.MailchimpRepo do
   Returns a `HTTPoison.Response{status_code: 200}` struct if successful.
   """
   def add_to_mc_audience(subscriber, list_id) do
-    HTTPoison.post(
+    HTTPoison.post!(
       @base_url <> "lists/" <> list_id <> "/members",
       encode(subscriber, false),
       [],
       [hackney: @hackney_auth]
-    )
+    ) 
+    |> process_response
   end
 
   @doc """
@@ -93,12 +107,13 @@ defmodule PlumaApi.MailchimpRepo do
   Returns a `HTTPoison.Response{status_code: 204}` struct if successful.
   """
   def tag_subscriber(email, list_id, tags) when is_list(tags) do
-    HTTPoison.post(
+    HTTPoison.post!(
       @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email) <> "/tags",
       Jason.encode(%{ tags: tags, is_syncing: false }) |> elem(1),
       [],
       [hackney: @hackney_auth]
     )
+    |> process_response(204)
   end
 
   @doc """
@@ -111,7 +126,7 @@ defmodule PlumaApi.MailchimpRepo do
   required if we want to update the merge field itself in the future.
   """
   def create_merge_field(list_id, field_name, field_type) do
-    HTTPoison.post(
+    HTTPoison.post!(
       @base_url <> "lists/" <> list_id <> "/merge-fields",
       Jason.encode(%{ 
         name: field_name,
@@ -122,6 +137,7 @@ defmodule PlumaApi.MailchimpRepo do
       [],
       [hackney: @hackney_auth]
     )
+    |> process_response
   end
 
   @doc """
@@ -130,12 +146,13 @@ defmodule PlumaApi.MailchimpRepo do
   Returns a `HTTPoison.Response{status_code: 200}` struct if successful.
   """
   def update_merge_field(email, list_id, merge_fields) when is_map(merge_fields) do
-    HTTPoison.patch(
+    HTTPoison.patch!(
       @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
       Jason.encode(%{merge_fields: merge_fields}) |> elem(1),
       [],
       [hackney: @hackney_auth]
     )
+    |> process_response
   end
 
   @doc """
@@ -144,15 +161,12 @@ defmodule PlumaApi.MailchimpRepo do
   Returns `boolean` true or false.
   """
   def check_exists(email, list_id) do
-    {:ok, result} = 
-      HTTPoison.get(
-        @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
-        [],
-        [hackney: @hackney_auth]
-      )
-
-    case result do
-      %HTTPoison.Response{status_code: 200} -> true
+    case HTTPoison.get!(
+      @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
+      [],
+      [hackney: @hackney_auth]
+    ) do
+      %{status_code: 200} -> true
       _other -> false
     end
   end
@@ -160,20 +174,15 @@ defmodule PlumaApi.MailchimpRepo do
   @doc """
   Remove a subscriber from a given Mailchimp audience list.
 
-  Returns `{:ok, email}` if successful, `{:error, error}` otherwise.
+  Returns `{:ok, %{}}` if successful, `{:error, error}` otherwise.
   """ 
   def archive_subscriber(email, list_id) do
-    {:ok, result} =
-      HTTPoison.delete(
-        @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
-        [],
-        [hackney: @hackney_auth]
-      )
-
-    case result do
-      %HTTPoison.Response{status_code: 204} -> {:ok, email}
-      error -> {:error, error}
-    end
+    HTTPoison.delete!(
+      @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
+      [],
+      [hackney: @hackney_auth]
+    )
+    |> process_response(204)
   end
 
   @doc """
@@ -181,22 +190,27 @@ defmodule PlumaApi.MailchimpRepo do
 
   Deleted subscribers CANNOT be reimported, unlike archived subs.
 
-  Returns `{:ok, email}` if successful, `{:error, error}` otherwise.
+  Returns `{:ok, %{}}` if successful, `{:error, error}` otherwise.
   """ 
   def delete_subscriber(email, list_id) do
-    {:ok, result} =
-      HTTPoison.post(
-        @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email) <> "/actions/delete-permanent",
-        Jason.encode(%{}) |> elem(1),
-        [],
-        [hackney: @hackney_auth]
-      )
+    HTTPoison.post!(
+      @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email) <> "/actions/delete-permanent",
+      Jason.encode(%{}) |> elem(1),
+      [],
+      [hackney: @hackney_auth]
+    )
+    |> process_response(204)
+  end
 
-    case result do
-      %HTTPoison.Response{status_code: 204} -> {:ok, email}
-      error -> {:error, error}
+  defp process_response(response, success_code \\ 200) do
+    case response do
+      %{ status_code: ^success_code, body: body } -> {:ok, decode_response_body(body)}
+      %{ status_code: _error_code, body: body } -> {:error, decode_response_body(body)}
     end
   end
+
+  defp decode_response_body(""), do: %{}
+  defp decode_response_body(body), do: Jason.decode!(body)
 
   @doc """
   WARNING - retrieves up to 1000 subscribers from the main Mailchimp list, 

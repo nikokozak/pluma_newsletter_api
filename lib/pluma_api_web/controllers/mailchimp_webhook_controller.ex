@@ -8,14 +8,31 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   @moduledoc """
   Functions that handle Mailchimp webhooks. Used to keep our local database in sync
   with our Mailchimp Audience.
+
+  At the moment, we only support `unsubscribe` and `subscribe` notifications by Mailchimp.
   """
 
   @list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
 
+  @doc """
+  Mailchimp will ping the server to make sure the route provided is correct.
+  """
   def test_get(conn, _params) do
     conn
     |> put_status(200)
     |> json("OK")
+  end
+
+  defp digest_webhook_params(params) do
+    sub_data = params["data"]
+    merge_fields = sub_data["merges"]
+    %{
+        email: sub_data["email"],
+        mchimp_id: sub_data["id"],
+        rid: merge_fields["RID"],
+        parent_rid: merge_fields["PRID"],
+        list: sub_data["list_id"]
+    }
   end
 
   @doc """
@@ -26,20 +43,13 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   Returns 200 for success otherwise 202 (necessary otherwise Mailchimp will keep trying).
   """
   def handle_event(conn, params = %{"type" => "subscribe"}) do
-    sub_data = params["data"]
-    merge_fields = sub_data["merges"]
-    sub = Subscriber.insert_changeset(%Subscriber{}, %{
-        email: sub_data["email"],
-        mchimp_id: sub_data["id"],
-        rid: merge_fields["RID"],
-        parent_rid: merge_fields["PRID"],
-        list: sub_data["list_id"]
-    })
+    data = digest_webhook_params(params)
+    new_subscriber = Subscriber.insert_changeset(%Subscriber{}, data)
 
-    Logger.info("New subscriber received: #{sub_data["email"]}")
-    Logger.info("Attempting to insert #{sub_data["email"]} into DB")
+    Logger.info("New subscriber received: #{data.email}")
+    
 
-    case Repo.insert(sub) do
+    case Repo.insert(new_subscriber) do
       {:ok, subscriber} ->
         maybe_update_rid(subscriber)
         maybe_tag_parent(subscriber)
@@ -59,7 +69,8 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   end
 
   def handle_event(conn, params = %{"type" => "unsubscribe"}) do
-    sub = Subscriber.with_email(params["data"]["email"]) 
+    data = digest_webhook_params(params)
+    sub = Subscriber.with_email(data.email) 
           |> Repo.one
 
     Logger.info("New unsubscribe event received: #{params["data"]["email"]}")
@@ -92,22 +103,19 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
     end
   end
 
-  defp maybe_update_rid(subscriber = %Subscriber{rid: ""}) do
-    maybe_update_rid(%{ subscriber | rid: nil })
-  end
-
+  defp maybe_update_rid(subscriber = %Subscriber{rid: ""}), do: maybe_update_rid(%{ subscriber | rid: nil })
   defp maybe_update_rid(subscriber = %Subscriber{rid: nil}) do
     Logger.info("Now attempting to update RID for #{Map.get(subscriber, :email)}")
-    rid = Nanoid.generate()
-    response = MailchimpRepo.update_merge_field(subscriber.email, @list_id, %{ "RID": rid })
+    new_rid = Nanoid.generate()
+    response = MailchimpRepo.update_merge_field(subscriber.email, @list_id, %{ "RID": new_rid })
     case response do
-      {:ok, %HTTPoison.Response{status_code: 200}} ->
+      {:ok, _reponse_body} ->
         Logger.info("Updated RID field for #{Map.get(subscriber, :email)} in Mailchimp successfully")
-        Subscriber.insert_changeset(subscriber, %{rid: rid})
+        Subscriber.insert_changeset(subscriber, %{rid: new_rid})
         |> Repo.update
-      other ->
+      {:error, error_response} ->
         Logger.warn("There was an error remotely updating RID field for #{Map.get(subscriber, :email)}")
-        IO.inspect(other)
+        IO.inspect(error_response)
     end
   end
 
@@ -137,7 +145,7 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
       nil -> :ok
       other ->
         if length(other) == 3 do
-          {:ok, %HTTPoison.Response{ status_code: 204 }} = 
+          {:ok, _} = 
             MailchimpRepo.tag_subscriber(parent.email, @list_id, [%{ name: "VIP", status: "active" }])
           Logger.info("Successfully tagged parent as VIP")
         end

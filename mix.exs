@@ -46,7 +46,8 @@ defmodule PlumaApi.MixProject do
       {:httpoison, "~> 1.6"},
       {:nanoid, "~> 2.0.4"},
       {:faker, "~> 0.16", only: :test},
-      {:cors_plug, "~> 2.0"}
+      {:cors_plug, "~> 2.0"},
+      {:sage, "~> 0.6"}
     ]
   end
 

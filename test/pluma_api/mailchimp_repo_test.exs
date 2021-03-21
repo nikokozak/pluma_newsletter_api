@@ -15,7 +15,7 @@ defmodule PlumaApi.MailchimpRepoTest do
   # setup :remove_test_subs_from_mailchimp
 
   test "MailchimpRepo.check_health/0" do 
-    {:ok, %HTTPoison.Response{status_code: 200}} = MailchimpRepo.check_health
+    {:ok, %{"health_status" => _status}} = MailchimpRepo.check_health
   end
 
   test "MailchimpRepo.check_exists/2" do
@@ -29,7 +29,7 @@ defmodule PlumaApi.MailchimpRepoTest do
   test "MailchimpRepo.get_subscriber/2" do
     {:ok, result} = MailchimpRepo.get_subscriber("nikokozak@gmail.com", @main_list_id)
 
-    assert result =~ "nikokozak@gmail.com"
+    assert %{"email_address" => "nikokozak@gmail.com"} = result
   end
 
   @tag test_sub: PlumaApi.Factory.subscriber()
@@ -40,7 +40,12 @@ defmodule PlumaApi.MailchimpRepoTest do
 
     {:ok, result} = MailchimpRepo.add_to_audience(subscriber, @main_list_id, true)
 
-    assert %HTTPoison.Response{status_code: 200} = result
+    email = subscriber.email
+    assert %{"email_address" => ^email} = result
+
+    {:error, result} = MailchimpRepo.add_to_audience(subscriber, @main_list_id, true)
+
+    assert %{ "status" => 400 } = result
   end
 
   @tag test_sub: PlumaApi.Factory.subscriber()
@@ -49,24 +54,22 @@ defmodule PlumaApi.MailchimpRepoTest do
                         |> Subscriber.insert_changeset(test_sub)
                         |> Repo.insert
 
-    MailchimpRepo.add_to_audience(subscriber, @main_list_id, true)
+    {:ok, _response} = MailchimpRepo.add_to_audience(subscriber, @main_list_id, true)
 
     # !!!!!!!! CAUTION !!!!!!!!!!
     Process.sleep(2000)
 
-    tagged = MailchimpRepo.tag_subscriber(subscriber.email, @main_list_id, [%{name: "Test Tag", status: "active"}])
-
-    assert {:ok, %HTTPoison.Response{status_code: 204}} = tagged
+    assert {:ok, _response} = MailchimpRepo.tag_subscriber(subscriber.email, @main_list_id, [%{name: "Test Tag", status: "active"}])
   end
 
   test "MailchimpRepo.update_merge_field/3" do
     {:ok, result} = MailchimpRepo.update_merge_field("nikokozak@gmail.com", @main_list_id, %{"PRID" => "cookoo"})
 
-    assert %HTTPoison.Response{status_code: 200} = result
+    assert %{"merge_fields" => %{ "PRID" => "cookoo" }} = result
    
     {:ok, result} = MailchimpRepo.update_merge_field("nikokozak@gmail.com", @main_list_id, %{"PRID" => ""})
     
-    assert %HTTPoison.Response{status_code: 200} = result
+    assert %{"merge_fields" => %{ "PRID" => "" }} = result
   end
 
   @tag test_sub: PlumaApi.Factory.subscriber()
@@ -81,7 +84,7 @@ defmodule PlumaApi.MailchimpRepoTest do
 
     {:ok, result} = MailchimpRepo.archive_subscriber(subscriber.email, @main_list_id)
 
-    assert subscriber.email == result
+    assert %{} == result
   end
 
   @tag test_sub: PlumaApi.Factory.subscriber()
@@ -96,12 +99,7 @@ defmodule PlumaApi.MailchimpRepoTest do
 
     {:ok, result} = MailchimpRepo.delete_subscriber(subscriber.email, @main_list_id)
 
-    assert subscriber.email == result
+    assert %{} == result
   end
-
-  # In case we want to pass a [list or single] of test subscribers to test
-  defp concat(a, b) when is_list(a) and is_list(b), do: a ++ b
-  defp concat(a, b) when is_list(b), do: [a] ++ b
-  defp concat(a, b) when is_list(a), do: a ++ [b]
 
 end

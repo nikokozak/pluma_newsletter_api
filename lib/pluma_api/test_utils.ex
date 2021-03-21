@@ -30,10 +30,9 @@ defmodule PlumaApi.TestUtils do
         on_exit(fn -> 
           IO.puts("Deleting test email #{test_sub.email} from Mailchimp API")
           case MailchimpRepo.delete_subscriber(test_sub.email, @main_list_id) do
-            {:ok, _email} -> IO.puts("Deleted #{test_sub.email} succesfully")
+            {:ok, _} -> IO.puts("Deleted #{test_sub.email} succesfully")
             {:error, error} -> 
-              {:ok, error_body} = Jason.decode(error.body)
-              IO.puts("Could not delete #{test_sub.email}. Status was #{error_body["status"]}")
+              IO.puts("Could not delete #{test_sub.email}. Status was #{error["status"]}")
           end
         end)
       end

@@ -93,19 +93,19 @@ defmodule PlumaApiWeb.SubscriberController do
   defp add_to_mc_list(msg = %{status: :error}), do: msg
   defp add_to_mc_list(%{status: :ok, data: form_data}) do
     case PlumaApi.MailchimpRepo.add_to_mc_audience(form_data, Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)) do
-      {:ok, %HTTPoison.Response{status_code: 200}} ->
+      {:ok, _response} ->
         Logger.info("Successfully added new subscriber #{form_data["email"]} to our Mailchimp List")
         %{status: :ok, detail: :success, stage: :mc}
-      {:ok, %HTTPoison.Response{status_code: 400}} ->
+      {:error, %{"status" => 400}} ->
         Logger.info("Subscriber already added, waiting on email-confirmation for #{form_data["email"]}")
         %{status: :error, detail: "pending", stage: :mc}
-      {:ok, %HTTPoison.Response{status_code: status_code, body: body}} -> 
+      {:error, %{"status" => status_code, "title" => body}} -> 
         Logger.warn("There was an error adding new subscriber #{form_data["email"]} to our Mailchimp List.")
         Logger.warn("Received a response with code #{status_code} and body #{body}")
         %{status: :error, detail: %{ body: body, status_code: status_code}, stage: :mc}  
       _other -> 
-        Logger.warn("There was an unexpected error adding new subscriber #{form_data["email"]} to our Mailchimp List.")
-        %{status: :error, detail: "There was an unexpected error when interfacing with Mailchimp", stage: :mc}
+        Logger.warn("There was an unhandled error adding new subscriber #{form_data["email"]} to our Mailchimp List.")
+        %{status: :error, detail: "There was an unhandled error when interfacing with Mailchimp", stage: :mc}
     end
   end
 

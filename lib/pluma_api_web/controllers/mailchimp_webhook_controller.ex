@@ -4,7 +4,7 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   use PlumaApiWeb, :controller
   alias PlumaApi.Subscriber
   alias PlumaApi.Repo
-  alias PlumaApi.MailchimpRepo
+  alias PlumaApi.Mailchimp
 
   @moduledoc """
   Functions that handle Mailchimp webhooks. Used to keep our local database in sync
@@ -35,7 +35,7 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
     OK.try do
       params = digest_webhook_params(params)
       subscriber <- insert_or_retrieve_subscriber(params)
-      _synced_subscriber <- syncronize_rid(subscriber, params)
+      _synced_subscriber <- Mailchimp.sync_remote_and_local_RIDs(subscriber, params, @list_id)
       _updated_parent <- update_parent(subscriber)
     after
       conn
@@ -109,63 +109,10 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
     end
   end
 
-  defp syncronize_rid(local_sub = %Subscriber{rid: ""}, external_sub), do: syncronize_rid(%{ local_sub | rid: nil }, external_sub)
-  defp syncronize_rid(local_sub = %Subscriber{rid: nil}, _external_sub = %{rid: ""}) do
-    OK.for do
-      new_rid = Nanoid.generate()
-      _remote_update <- update_remote(local_sub, %{ "RID": new_rid })
-      local_update <- update_local(local_sub, %{ rid: new_rid })
-    after
-      {:ok, local_update}
-    end
-  end
-  defp syncronize_rid(local_sub = %Subscriber{rid: nil}, _external_sub = %{rid: rid}) do
-    OK.for do
-      local_update <- update_local(local_sub, %{ rid: rid })
-    after
-      {:ok, local_update}
-    end
-  end
-  defp syncronize_rid(local_sub = %Subscriber{rid: rid}, _external_sub = %{rid: ""}) do
-    OK.for do
-      _remote_update <- update_remote(local_sub, %{ "RID": rid })
-    after
-      {:ok, local_sub}
-    end
-  end
-  defp syncronize_rid(local_sub = %Subscriber{rid: local_rid}, %{rid: remote_rid}) do 
-    if not String.equivalent?(local_rid, remote_rid) do
-      OK.for do
-        _remote_update <- update_remote(local_sub, %{ "RID": local_rid })  
-      after
-        {:ok, local_sub}
-      end
-    else
-      {:ok, local_sub}
-    end
-  end
-
   defp remove_subscriber(subscriber = %Subscriber{}) do
     case Repo.delete(subscriber) do
       {:ok, sub} -> {:ok, sub}
       {:error, _chgst} -> {:error, :local_delete_failed}
-    end
-  end
-
-  defp update_remote(subscriber = %Subscriber{}, updated_fields) when is_map(updated_fields) do
-    MailchimpRepo.update_merge_field(subscriber.email, @list_id, updated_fields)
-    |> case do
-      {:ok, response} -> {:ok, response}
-      {:error, _error_response} -> {:error, :remote_update_error}
-    end
-  end
-
-  defp update_local(subscriber = %Subscriber{}, updated_fields) do
-    Subscriber.insert_changeset(subscriber, updated_fields)
-    |> Repo.update
-    |> case do
-      {:ok, updated} -> {:ok, updated}
-      {:error, _chgst} -> {:error, :local_update_error}
     end
   end
 
@@ -189,7 +136,7 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   defp maybe_award_vip(subscriber = %Subscriber{}) do
     subscriber = Repo.preload(subscriber, :referees)
     if length(subscriber.referees) == 3 do
-      case MailchimpRepo.tag_subscriber(subscriber.email, @list_id, [%{ name: "VIP", status: "active" }]) do
+      case Mailchimp.tag_subscriber(subscriber.email, @list_id, [%{ name: "VIP", status: "active" }]) do
         {:ok, _response} -> {:ok, subscriber}
         {:error, _response} -> {:error, :error_tagging_subscriber}
       end

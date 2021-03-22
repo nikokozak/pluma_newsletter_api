@@ -23,17 +23,16 @@ defmodule PlumaApi.MailchimpRepo do
   wasn't found by the Mailchimp API for example).
   """
 
-  @type success_response() :: {:ok, response_body :: map}
-  @type error_response() :: {:error, response_body :: map}
+  @type success_response() :: HTTPoison.Response.t()
+  @type error_response() :: HTTPoison.Response.t()
 
   @spec check_health() :: success_response | error_response
   @spec get_subscriber(email :: String.t, list_id :: String.t) :: success_response | error_response
-  @spec add_to_audience(subscriber :: %Subscriber{}, list_id :: String.t, test :: boolean()) :: success_response | error_response
-  @spec add_to_mc_audience(subscriber :: map, list_id :: String.t) :: success_response | error_response
+  @spec add_to_audience(subscriber_data :: binary, list_id :: String.t) :: success_response | error_response
   @spec tag_subscriber(email :: String.t, list_id :: String.t, tags :: list(%{name: String.t, status: String.t})) :: success_response | error_response
   @spec create_merge_field(list_id :: String.t, field_name :: String.t, field_type :: String.t) :: success_response | error_response
   @spec update_merge_field(email :: String.t, list_id :: String.t, merge_fields :: map) :: success_response | error_response
-  @spec check_exists(email :: String.t, list_id :: String.t) :: boolean
+  @spec check_exists(email :: String.t, list_id :: String.t) :: success_response | error_response
   @spec archive_subscriber(email :: String.t, list_id :: String.t) :: success_response | error_response
   @spec delete_subscriber(email :: String.t, list_id :: String.t) :: success_response | error_response
 
@@ -49,8 +48,13 @@ defmodule PlumaApi.MailchimpRepo do
       [],
       [hackney: @hackney_auth]
     )
-    |> process_response
   end
+
+  @doc """
+  Applies MD5 encoding to a string - this is necessary in order to pass the email
+  as a parameter to the Mailchimp API.
+  """
+  def hashify_email(email), do: :crypto.hash(:md5, String.downcase(email)) |> Base.encode16 |> String.downcase
 
   @doc """
   Get the details for a given email address if present in a Mailchimp audience.
@@ -63,7 +67,6 @@ defmodule PlumaApi.MailchimpRepo do
       [],
       [hackney: @hackney_auth]
     )
-    |> process_response
   end
 
   @doc """
@@ -72,33 +75,13 @@ defmodule PlumaApi.MailchimpRepo do
 
   Returns a `{:ok, repsonse_body}` struct if successful, otherwise `{:error, :error_response}`
   """
-  def add_to_audience(subscriber = %Subscriber{}, list_id, test \\ false) do
+  def add_to_audience(subscriber_data, list_id) do
     HTTPoison.post!(
       @base_url <> "lists/" <> list_id <> "/members",
-      encode(subscriber, test),
+      subscriber_data,
       [],
       [hackney: @hackney_auth]
     )
-    |> process_response
-  end
-
-  @doc """
-  Adds a given subscriber to the mailchimp audience. As opposed to the function above,
-  this version of the function takes in a subscriber as received from a website form - with fields including
-  "email" (mandatory), "fname", "lname", "rid", and "prid". This function is implemented in order to pass
-  form data from our site onto the Mailchimp API. A webhook will be triggered by this, at which point our server
-  adds the subscriber to the local database.
-
-  Returns a `HTTPoison.Response{status_code: 200}` struct if successful.
-  """
-  def add_to_mc_audience(subscriber, list_id) do
-    HTTPoison.post!(
-      @base_url <> "lists/" <> list_id <> "/members",
-      encode(subscriber, false),
-      [],
-      [hackney: @hackney_auth]
-    ) 
-    |> process_response
   end
 
   @doc """
@@ -113,7 +96,6 @@ defmodule PlumaApi.MailchimpRepo do
       [],
       [hackney: @hackney_auth]
     )
-    |> process_response(204)
   end
 
   @doc """
@@ -137,7 +119,6 @@ defmodule PlumaApi.MailchimpRepo do
       [],
       [hackney: @hackney_auth]
     )
-    |> process_response
   end
 
   @doc """
@@ -152,7 +133,6 @@ defmodule PlumaApi.MailchimpRepo do
       [],
       [hackney: @hackney_auth]
     )
-    |> process_response
   end
 
   @doc """
@@ -161,14 +141,11 @@ defmodule PlumaApi.MailchimpRepo do
   Returns `boolean` true or false.
   """
   def check_exists(email, list_id) do
-    case HTTPoison.get!(
+    HTTPoison.get!(
       @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
       [],
       [hackney: @hackney_auth]
-    ) do
-      %{status_code: 200} -> true
-      _other -> false
-    end
+    )
   end
 
   @doc """
@@ -182,7 +159,6 @@ defmodule PlumaApi.MailchimpRepo do
       [],
       [hackney: @hackney_auth]
     )
-    |> process_response(204)
   end
 
   @doc """
@@ -199,18 +175,7 @@ defmodule PlumaApi.MailchimpRepo do
       [],
       [hackney: @hackney_auth]
     )
-    |> process_response(204)
   end
-
-  defp process_response(response, success_code \\ 200) do
-    case response do
-      %{ status_code: ^success_code, body: body } -> {:ok, decode_response_body(body)}
-      %{ status_code: _error_code, body: body } -> {:error, decode_response_body(body)}
-    end
-  end
-
-  defp decode_response_body(""), do: %{}
-  defp decode_response_body(body), do: Jason.decode!(body)
 
   @doc """
   WARNING - retrieves up to 1000 subscribers from the main Mailchimp list, 
@@ -266,78 +231,5 @@ defmodule PlumaApi.MailchimpRepo do
     end
   end
 
-  defp encode(sub = %Subscriber{}, false) do
-    Jason.encode!(%{
-      email_address: sub.email,
-      status: "subscribed",
-      merge_fields: %{
-        RID: sub.rid,
-        PRID: sub.parent_rid
-      }
-    })
-  end
-
-  defp encode(sub = %Subscriber{}, true) do
-    Jason.encode!(%{
-      email_address: sub.email,
-      status: "subscribed",
-      tags: ["Test"],
-      merge_fields: %{
-        RID: sub.rid,
-        PRID: sub.parent_rid
-      }
-    })
-  end
-
-  # Eventually incorporate this override with the one below - for now just to make sure ip_signup doesn't block adding a sub while testing.
-  defp encode(%{"email"=> email, "fname" => fname, "lname" => lname, "rid" => rid, "prid" => prid, "ip_signup" => ip_signup}, false) do
-    Jason.encode!(%{
-      email_address: email,
-      status: "pending",
-      merge_fields: %{
-        FNAME: fname,
-        LNAME: lname,
-        RID: rid,
-        PRID: prid
-      },
-      ip_signup: ip_signup
-    })
-  end
-
-  # Eventually incorporate this override with the one below - for now just to make sure ip_signup doesn't block adding a sub while testing.
-  defp encode(%{"email"=> email, "fname" => fname, "lname" => lname, "rid" => rid, "prid" => prid, "ip_signup" => ip_signup}, true) do
-    Jason.encode!(%{
-      email_address: email,
-      status: "pending",
-      tags: ["Test"],
-      merge_fields: %{
-        FNAME: fname,
-        LNAME: lname,
-        RID: rid,
-        PRID: prid
-      },
-      ip_signup: ip_signup
-    })
-  end
-  
-  # LEGACY
-  defp encode(%{"email"=> email, "fname" => fname, "lname" => lname, "rid" => rid, "prid" => prid}, false) do
-    Jason.encode!(%{
-      email_address: email,
-      status: "pending",
-      merge_fields: %{
-        FNAME: fname,
-        LNAME: lname,
-        RID: rid,
-        PRID: prid
-      }
-    })
-  end
-
-  @doc"""
-  Applies MD5 encoding to a string - this is necessary in order to pass the email
-  as a parameter to the Mailchimp API.
-  """
-  def hashify_email(email), do: :crypto.hash(:md5, String.downcase(email)) |> Base.encode16 |> String.downcase
 
 end

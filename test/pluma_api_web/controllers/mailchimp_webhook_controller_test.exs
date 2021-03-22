@@ -28,7 +28,7 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
   #be added to our DB and an RID given to our local and remote subscribers.
   @tag test_sub: PlumaApi.Factory.subscriber()
   test "MailchimpWebhookController.handle: subscribe, missing RID", %{ conn: conn, test_sub: test_sub }do
-    {:ok, _resp} = MailchimpRepo.add_to_audience(%Subscriber{
+    {:ok, _resp} = Mailchimp.add_to_audience(%Subscriber{
       email: test_sub.email,
       rid: "",
       parent_rid: "",
@@ -48,7 +48,7 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
     assert not is_nil(subscriber)
     assert String.length(subscriber.rid) > 5 
 
-    {:ok, remote_sub} = MailchimpRepo.get_subscriber(test_sub.email, @list_id)
+    {:ok, remote_sub} = Mailchimp.get_subscriber(test_sub.email, @list_id)
 
     assert String.equivalent?(remote_sub["merge_fields"]["RID"], subscriber.rid)
   end
@@ -72,7 +72,7 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
   test "MailchimpWebhookController.handle: subscribe, sub already in DB, different RIDs", %{ conn: conn, test_sub: test_sub }do
     remote_rid = Nanoid.generate()
 
-    {:ok, _resp} = MailchimpRepo.add_to_audience(%Subscriber{
+    {:ok, _resp} = Mailchimp.add_to_audience(%Subscriber{
       email: test_sub.email,
       rid: remote_rid,
       parent_rid: test_sub.parent_rid,
@@ -90,7 +90,7 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
 
     assert json_response(conn, 200)
 
-    {:ok, sub} = MailchimpRepo.get_subscriber(test_sub.email, @list_id)
+    {:ok, sub} = Mailchimp.get_subscriber(test_sub.email, @list_id)
 
     assert sub["merge_fields"]["RID"] == subscriber.rid
   end

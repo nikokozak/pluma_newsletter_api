@@ -7,6 +7,11 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
   @moduletag :mailchimp_webhook_controller_tests
   @list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
 
+  # In appropriate tests, we add a @tag test_sub: PlumaApi.Factory.subscriber()
+  # which becomes available to the testing function via the test context.
+  # The subscriber is then deleted via the `on_exit/2` callback
+  # This mechanism is handled by the Pluma.TestUtils macro
+  
   #If an external subscriber is received, and includes an RID, said subscriber should
   #be added to our DB.
   test "MailchimpWebhookController.handle: subscribe, good data", %{ conn: conn }do
@@ -33,7 +38,7 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
       rid: "",
       parent_rid: "",
       list: test_sub.list}, 
-    @list_id, true)
+    @list_id, "subscribed", true)
 
     call = make_subscribe_call(test_sub.email, "")
 
@@ -77,7 +82,7 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
       rid: remote_rid,
       parent_rid: test_sub.parent_rid,
       list: test_sub.list}, 
-    @list_id, true)
+    @list_id, "subscribed", true)
 
     {:ok, subscriber} = Subscriber.insert_changeset(%Subscriber{}, test_sub)
                  |> Repo.insert

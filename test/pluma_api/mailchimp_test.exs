@@ -4,15 +4,15 @@ defmodule PlumaApi.MailchimpTest do
   alias PlumaApi.Mailchimp
   use PlumaApi.TestUtils
 
-  @moduletag :mailchimp_repo_tests
+  @moduletag :mailchimp_tests
   @main_list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
   @moduledoc """
   """
 
-  # In appropriate tests, we add a @tag push_sub: PlumaApi.Factory.subscriber()
+  # In appropriate tests, we add a @tag test_sub: PlumaApi.Factory.subscriber()
   # which becomes available to the testing function via the test context.
   # The subscriber is then deleted via the `on_exit/2` callback
-  # setup :remove_test_subs_from_mailchimp
+  # This mechanism is handled by the Pluma.TestUtils macro
 
   test "Mailchimp.check_health/0" do 
     {:ok, %{"health_status" => _status}} = Mailchimp.check_health
@@ -33,17 +33,17 @@ defmodule PlumaApi.MailchimpTest do
   end
 
   @tag test_sub: PlumaApi.Factory.subscriber()
-  test "Mailchimp.add_to_audience/3", %{test_sub: test_sub} do
+  test "Mailchimp.add_to_audience/4", %{test_sub: test_sub} do
     {:ok, subscriber} = %Subscriber{}
                         |> Subscriber.insert_changeset(test_sub)
                         |> Repo.insert
 
-    {:ok, result} = Mailchimp.add_to_audience(subscriber, @main_list_id, true)
+    {:ok, result} = Mailchimp.add_to_audience(subscriber, @main_list_id, "subscribed", true)
 
     email = subscriber.email
     assert %{"email_address" => ^email} = result
 
-    {:error, result} = Mailchimp.add_to_audience(subscriber, @main_list_id, true)
+    {:error, result} = Mailchimp.add_to_audience(subscriber, @main_list_id, "subscribed", true)
 
     assert %{ "status" => 400 } = result
   end
@@ -54,7 +54,7 @@ defmodule PlumaApi.MailchimpTest do
                         |> Subscriber.insert_changeset(test_sub)
                         |> Repo.insert
 
-    {:ok, _response} = Mailchimp.add_to_audience(subscriber, @main_list_id, true)
+    {:ok, _response} = Mailchimp.add_to_audience(subscriber, @main_list_id, "subscribed", true)
 
     # !!!!!!!! CAUTION !!!!!!!!!!
     Process.sleep(2000)
@@ -78,7 +78,7 @@ defmodule PlumaApi.MailchimpTest do
                         |> Subscriber.insert_changeset(test_sub)
                         |> Repo.insert
 
-    {:ok, _result} = Mailchimp.add_to_audience(subscriber, @main_list_id, true)
+    {:ok, _result} = Mailchimp.add_to_audience(subscriber, @main_list_id, "subscribed", true)
 
     Process.sleep(2000)
 
@@ -93,7 +93,7 @@ defmodule PlumaApi.MailchimpTest do
                         |> Subscriber.insert_changeset(test_sub)
                         |> Repo.insert
 
-    {:ok, _result} = Mailchimp.add_to_audience(subscriber, @main_list_id, true)
+    {:ok, _result} = Mailchimp.add_to_audience(subscriber, @main_list_id, "subscribed", true)
 
     Process.sleep(2000)
 

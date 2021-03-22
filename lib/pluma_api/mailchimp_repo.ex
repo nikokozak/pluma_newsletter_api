@@ -15,9 +15,8 @@ defmodule PlumaApi.MailchimpRepo do
   The hackney option is passed into HTTPoison internally in order to generate the correct authorization
   protocol.
 
-  All functions return either a `{:ok, response_body :: %{}}` or `{:error, response_body :: %{}}`
-  tuple. This is done to save us some effort in checking the return status codes, which vary
-  from API call to API call (i.e. some return 200 vs. 204). 
+  All functions return a `HTTPoison.Response{}` struct. In order to assert success,
+  the `status_code` of the struct can be checked against Mailchimp API guidelines.
 
   Internally, all functions will raise in case of connection failures (but won't raise if a resource
   wasn't found by the Mailchimp API for example).
@@ -38,9 +37,6 @@ defmodule PlumaApi.MailchimpRepo do
 
   @doc """
   Checks to see if the Mailchimp API is responding.
-
-  Returns an `{:ok, %{"health_status" => health_status :: string}}` if successful, and
-  `{:error, error_body :: %{}}` if not.
   """
   def check_health() do
     HTTPoison.get!(
@@ -58,8 +54,6 @@ defmodule PlumaApi.MailchimpRepo do
 
   @doc """
   Get the details for a given email address if present in a Mailchimp audience.
-
-  Returns `{:ok, response_body}` if successful, otherwise `{:error, error}`.
   """
   def get_subscriber(email, list_id) do
     HTTPoison.get!(
@@ -137,8 +131,6 @@ defmodule PlumaApi.MailchimpRepo do
 
   @doc """
   Check whether a given email exists in the provided list.
-
-  Returns `boolean` true or false.
   """
   def check_exists(email, list_id) do
     HTTPoison.get!(
@@ -151,7 +143,7 @@ defmodule PlumaApi.MailchimpRepo do
   @doc """
   Remove a subscriber from a given Mailchimp audience list.
 
-  Returns `{:ok, %{}}` if successful, `{:error, error}` otherwise.
+  Returns `HTTPoison.Response{status_code: 204}` if successful.
   """ 
   def archive_subscriber(email, list_id) do
     HTTPoison.delete!(
@@ -166,7 +158,7 @@ defmodule PlumaApi.MailchimpRepo do
 
   Deleted subscribers CANNOT be reimported, unlike archived subs.
 
-  Returns `{:ok, %{}}` if successful, `{:error, error}` otherwise.
+  Returns `HTTPoison.Response{status_code: 204}` if successful.
   """ 
   def delete_subscriber(email, list_id) do
     HTTPoison.post!(

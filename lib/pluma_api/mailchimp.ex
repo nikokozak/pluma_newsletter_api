@@ -33,7 +33,7 @@ defmodule PlumaApi.Mailchimp do
 
   def tag_subscriber(email, list_id, tags) when is_list(tags) do
     MailchimpRepo.tag_subscriber(email, list_id, tags)
-    |> process_response
+    |> process_response(204)
   end
 
   def create_merge_field(list_id, field_name, field_type) do

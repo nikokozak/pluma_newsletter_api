@@ -2,7 +2,6 @@ defmodule PlumaApi.Subscriber do
   use Ecto.Schema
   import Ecto.Changeset
   import Ecto.Query, only: [from: 2]
-  alias __MODULE__
 
   @default_list Keyword.get(Application.get_env(:pluma_api, :mailchimp), :default_list)
 
@@ -15,10 +14,10 @@ defmodule PlumaApi.Subscriber do
 
     field :mchimp_id, :string
     field :email, :string, null: false
-    field :list, :string
+    field :list, :string, default: @default_list
 
     field :rid, :string
-    field :parent_rid, :string
+    field :parent_rid, :string, default: ""
 
     has_many :referees, __MODULE__, foreign_key: :parent_rid, references: :rid
     has_one :referer, __MODULE__, foreign_key: :rid, references: :parent_rid

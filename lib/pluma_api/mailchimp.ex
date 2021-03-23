@@ -150,7 +150,7 @@ defmodule PlumaApi.Mailchimp do
   RID's as well.
 
   Returns `{:ok, subscriber}` where subscriber is the synced subscriber. 
-  Also returns `{:error, :remote_update_error}` and `{:error, :local_update_error}` in case
+  Also returns `{:error, {:remote_update_error, {sub, response}}}` and `{:error, {:local_update_error, {sub, chgst}}}` in case
   there's a problem communicating with the remote API or local DB.
   """
   def sync_remote_and_local_RIDs(local_sub = %Subscriber{rid: ""}, external_sub, list_id), do: sync_remote_and_local_RIDs(%{ local_sub | rid: nil }, external_sub, list_id)
@@ -193,7 +193,7 @@ defmodule PlumaApi.Mailchimp do
     update_merge_field(subscriber.email, list_id, updated_fields)
     |> case do
       {:ok, response} -> {:ok, response}
-      {:error, _error_response} -> {:error, :remote_update_error}
+      {:error, error_response} -> {:error, {:remote_update_error, {subscriber, error_response}}}
     end
   end
 
@@ -202,7 +202,7 @@ defmodule PlumaApi.Mailchimp do
     |> PlumaApi.Repo.update
     |> case do
       {:ok, updated} -> {:ok, updated}
-      {:error, _chgst} -> {:error, :local_update_error}
+      {:error, chgst} -> {:error, {:local_update_error, {subscriber, chgst}}}
     end
   end
 

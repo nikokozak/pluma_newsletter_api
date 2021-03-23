@@ -29,6 +29,10 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   @doc """
   Handles "subscribe" and "unsubscribe" webhooks using `OK` to organize and rescue.
 
+  If a subscriber is already present, it will attempt to sync RID's with the external sub.
+
+  A call is made to tag the parent as VIP if the parent has 3 referees.
+
   Syncs RID's if there's a mismatch.
   """
   def handle(conn, params = %{ "type" => "subscribe" }) do
@@ -38,18 +42,11 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
       _synced_subscriber <- Mailchimp.sync_remote_and_local_RIDs(subscriber, params, @list_id)
       _updated_parent <- update_parent(subscriber)
     after
-      conn
-      |> put_status(200)
-      |> json(%{})
+      webhook_response(conn, 200)
     rescue
-      :local_insert_failed ->
-        Logger.warn("Could not insert subscriber into local DB")
-      :remote_update_error ->
-        Logger.warn("Could not update remote RID")
-      :local_update_error ->
-        Logger.warn("Could not update local RID")
-      :error_tagging_subscriber ->
-        Logger.warn("Could not tag parent as VIP")
+      error ->
+        log_error(error)
+        webhook_response(conn, 202)
     end
   end
   def handle(conn, params = %{ "type" => "unsubscribe" }) do
@@ -58,17 +55,13 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
       subscriber <- find_in_db(params)
       _deleted <- remove_subscriber(subscriber)
     after
-      conn
-      |> put_status(204)
-      |> json(%{})
+      webhook_response(conn, 204)
     rescue
-      :local_not_found ->
-        Logger.warn("Could not find subscriber in local DB")
-        conn
-        |> put_status(202)
-        |> json(%{})
-      :local_delete_failed ->
-        Logger.warn("Error attempting to delete existing local subscriber")
+      :local_not_found -> # Silent failure, we don't really care.
+        webhook_response(conn, 202)
+      error ->
+        log_error(error)
+        webhook_response(conn, 202)    
     end
   end
 
@@ -83,7 +76,8 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
         list: sub_data["list_id"]
     }
   end
-
+  
+  # Returns {:ok, %Subscriber{}} or {:error, {:local_insert_failed, {sub_params, changeset}}}
   defp insert_or_retrieve_subscriber(params) do
     case find_in_db (params) do
       {:error, :local_not_found} -> insert_subscriber(params)
@@ -105,17 +99,22 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
     |> Repo.insert
     |> case do
       {:ok, sub} -> {:ok, sub}
-      {:error, _chgst} -> {:error, :local_insert_failed}
+      {:error, chgst} -> {:error, {:local_insert_failed, {params, chgst}}}
     end
   end
 
   defp remove_subscriber(subscriber = %Subscriber{}) do
     case Repo.delete(subscriber) do
       {:ok, sub} -> {:ok, sub}
-      {:error, _chgst} -> {:error, :local_delete_failed}
+      {:error, chgst} -> {:error, {:local_delete_failed, {subscriber, chgst}}}
     end
   end
 
+  # Returns 
+  # {:ok, :no_parent} | 
+  # {:ok, :vip_not_granted} | 
+  # {:ok, %Subscriber{}} (if granted) | 
+  # {:error, {:error_tagging_subscriber, {subscriber, error_response}}}
   defp update_parent(child) do
     case get_parent(child) do
       {:ok, parent} -> maybe_award_vip(parent)
@@ -127,18 +126,22 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
     if has_parent_rid(child) do
       Subscriber.with_rid(child.parent_rid)
       |> Repo.one
-      |> OK.wrap
+      |> OK.wrap # Wrap in {:ok, ...}
     else
       {:error, nil}
     end
   end
 
+  # Returns 
+  # {:ok, %Subscriber{}} |
+  # {:ok, vip_not_granted} |
+  # {:error, {:error_tagging_subscriber, {sub, response}}}
   defp maybe_award_vip(subscriber = %Subscriber{}) do
     subscriber = Repo.preload(subscriber, :referees)
     if length(subscriber.referees) == 3 do
       case Mailchimp.tag_subscriber(subscriber.email, @list_id, [%{ name: "VIP", status: "active" }]) do
         {:ok, _response} -> {:ok, subscriber}
-        {:error, _response} -> {:error, :error_tagging_subscriber}
+        {:error, response} -> {:error, {:error_tagging_subscriber, {subscriber, response}}}
       end
     else
       {:ok, :vip_not_granted}
@@ -151,6 +154,31 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
     else
       false
     end
+  end
+
+  def log_error({:local_insert_failed, {params, chgst}}) do
+    Logger.warn("Error trying to insert #{params.email} into local DB. Changeset
+      for insertion: #{chgst.errors}")
+  end
+  def log_error({:remote_update_error, {sub, error_response}}) do
+    Logger.warn("Error trying to update Mailchimp subscriber via API for #{sub.email}.
+      Error response: #{error_response["title"]}")
+  end
+  def log_error({:local_update_error, {sub, chgst}}) do
+    Logger.warn("Error trying to update local db for subscriber #{sub.email}. Changeset
+      for insertion: #{chgst.errors}")
+  end
+  def log_error({:error_tagging_subscriber, {sub, response}}) do
+    Logger.warn("Error tagging Mailchimp subscriber #{sub.email}. Response was:
+      #{response["title"]}")
+  end
+  def log_error({:local_delete_failed, {sub, chgst}}) do
+    Logger.warn("Error trying to delete a local subscriber #{sub.email}. Changeset 
+      for deletion: #{chgst.errors}")
+  end
+
+  defp webhook_response(conn, code) do
+    conn |> put_status(code) |> json(%{})
   end
   
 end

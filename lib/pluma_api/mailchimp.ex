@@ -1,6 +1,7 @@
 defmodule PlumaApi.Mailchimp do
   alias PlumaApi.MailchimpRepo
   alias PlumaApi.Subscriber
+  alias PlumaApiWeb.Inputs.Subscriber.NewSubscriber
   require OK
 
   @default_success_code 200
@@ -44,6 +45,11 @@ defmodule PlumaApi.Mailchimp do
 
   Returns `{:ok, body}` or `{:error, error_body}`
   """
+  def add_to_audience(subscriber = %NewSubscriber{}, list_id) do
+    Jason.encode!(subscriber)
+    |> MailchimpRepo.add_to_audience(list_id)
+    |> process_response
+  end
   def add_to_audience(subscriber, list_id, status \\ "pending", test? \\ false) when status in ["pending", "subscribed"] do
     encode_subscriber_data_for_mailchimp(subscriber, status, test?)
     |> MailchimpRepo.add_to_audience(list_id)

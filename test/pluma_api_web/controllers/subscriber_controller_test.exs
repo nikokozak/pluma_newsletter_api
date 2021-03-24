@@ -33,6 +33,28 @@ defmodule PlumaApiWeb.SubscriberControllerTest do
   end
 
   @tag test_sub: PlumaApi.Factory.subscriber()
+  test "add_subscriber/2", %{conn: conn, test_sub: test_sub} do
+    conn_new = post(conn, Routes.subscriber_path(conn, :add_subscriber), make_new_subscriber_call(test_sub))
+
+    assert json_response(conn_new, 200)
+    assert PlumaApi.MailchimpRepo.check_exists(test_sub.email, @list_id)
+
+    conn_existing = post(conn, Routes.subscriber_path(conn, :add_subscriber), make_new_subscriber_call(test_sub))
+
+    assert json_response(conn_existing, 400)
+    assert %{"status" => "error",
+      "type" => "mc_api_sub_pending_error",
+      "detail" => "pending"} = Jason.decode!(conn_existing.resp_body)
+
+    conn_invalid = post(conn, Routes.subscriber_path(conn, :add_subscriber), %{"fname" => "", "lname" => "", "email" => "not_an_email", "rid" => "111111", "prid" => ""})
+
+    assert json_response(conn_invalid, 400)
+    assert %{"status" => "error",
+      "type" => "local_param_validation_error",
+      "detail" => errors} = Jason.decode!(conn_invalid.resp_body)
+  end
+
+  @tag test_sub: PlumaApi.Factory.subscriber()
   test "new_subscriber/2", %{conn: conn, test_sub: test_sub} do
     conn_new = post(conn, Routes.subscriber_path(conn, :new_subscriber), make_new_subscriber_call(test_sub))
 
@@ -57,7 +79,8 @@ defmodule PlumaApiWeb.SubscriberControllerTest do
       "email" => factory_sub.email,
       "rid" => factory_sub.rid,
       "prid" => factory_sub.parent_rid,
-      "ip_signup" => Faker.Internet.ip_v4_address()
+      "ip_signup" => Faker.Internet.ip_v4_address(),
+      "tags" => ["Test"]
     }
   end
 

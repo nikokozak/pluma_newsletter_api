@@ -23,6 +23,8 @@ defmodule PlumaApiWeb.Router do
     # handle form submission from website
     post "/subscriber", SubscriberController, :new_subscriber
 
+    post "/subscriber_v2", SubscriberController, :add_subscriber
+
     # test routes to check whether application is responding
     get "/test_me", TestController, :test_get
     post "/test_me", TestController, :test_post

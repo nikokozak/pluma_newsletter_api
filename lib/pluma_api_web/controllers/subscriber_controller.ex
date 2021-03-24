@@ -1,8 +1,12 @@
 defmodule PlumaApiWeb.SubscriberController do
   require Logger
+  require OK
   use PlumaApiWeb, :controller  
   alias PlumaApiWeb.ErrorView
-  alias PlumaApi.{Subscriber, Repo}
+  alias PlumaApiWeb.Inputs.Subscriber.NewSubscriber
+  alias PlumaApi.{Subscriber, Repo, Mailchimp}
+
+  @list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
 
   def get_subscriber(conn, _params = %{"email" => email}) do
     subscriber_query = Subscriber.with_email(email)
@@ -30,6 +34,84 @@ defmodule PlumaApiWeb.SubscriberController do
         |> put_status(200)
         |> render("details.json", subscriber: sub)
     end
+  end
+
+  def add_subscriber(conn, params) do
+    OK.try do
+      validated <- NewSubscriber.validate_input(params)
+      safe <- ensure_doesnt_exist(validated)
+      _result <- add_to_mailchimp(safe, @list_id)
+    after
+      Logger.info("Successfully subscribed #{safe.email}")
+      respond(conn, 200, safe)
+    rescue
+      error -> 
+        respond(conn, 400, handle_error(error))
+    end
+  end
+
+  defp handle_error({:mc_add_sub_failure, {sub, %{"status" => 400}}}) do
+    Logger.warn("Error adding subscriber #{sub.email} to MC audience. Subscriber
+      already added, waiting on confirmation email.")
+    %{status: :error, type: :mc_api_sub_pending_error, detail: :pending}
+  end
+  defp handle_error({:mc_add_sub_failure, {sub, body}}) do
+    Logger.warn("Error adding subscriber #{sub.email} to MC audience. Received
+      status #{body["status"]} and message \"#{body["title"]}\" from Mailchimp API.")
+    %{status: :error, type: :mc_api_unknown_error, detail: body["status"]}
+  end
+  defp handle_error({:local_email_found, sub}) do
+    Logger.warn("Error adding new subscriber #{sub.email} to our DB, email already
+      in DB.")
+    %{status: :error, type: :local_email_exists_error, detail: sub.email}
+  end
+  defp handle_error({:validation, chgst = %Ecto.Changeset{}}) do
+    Logger.warn("There was an error validating the following fields: #{Jason.encode!(Keyword.keys(chgst.errors))} for new sub #{chgst.changes.email}")
+    %{status: :error, type: :local_param_validation_error, detail: Keyword.keys(chgst.errors)}
+  end
+
+  defp respond(conn, status_code, msg) do
+    conn
+    |> put_status(status_code)
+    |> json(msg)
+  end
+
+  defp add_to_mailchimp(subscriber, list_id) do
+    case Mailchimp.add_to_audience(subscriber, list_id) do
+      {:ok, body} -> {:ok, body}
+      {:error, body} -> {:error, {:mc_add_sub_failure, {subscriber, body}}}
+    end
+  end
+
+  defp ensure_doesnt_exist(subscriber) do
+    OK.for do
+      _ <- ensure_email_not_in_db(subscriber)
+      safe_sub = ensure_no_rid_collision(subscriber)
+    after
+      safe_sub
+    end
+  end
+
+  defp ensure_email_not_in_db(subscriber) do
+    Subscriber.with_email(subscriber.email)
+    |> Repo.one
+    |> case do
+      nil -> {:ok, subscriber}
+      sub -> {:error, {:local_email_found, sub}}
+    end
+  end
+
+  defp ensure_no_rid_collision(subscriber) do
+    Subscriber.with_rid(subscriber.rid)
+    |> Repo.one
+    |> case do
+      nil -> {:ok, subscriber}
+      _sub -> {:ok, assign_new_rid(subscriber)}
+    end
+  end
+
+  defp assign_new_rid(subscriber) do
+    %{ subscriber | rid: Nanoid.generate() }
   end
 
   def new_subscriber(conn, params = %{"email" => email}) do
@@ -92,7 +174,7 @@ defmodule PlumaApiWeb.SubscriberController do
 
   defp add_to_mc_list(msg = %{status: :error}), do: msg
   defp add_to_mc_list(%{status: :ok, data: form_data}) do
-    case PlumaApi.MailchimpRepo.add_to_mc_audience(form_data, Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)) do
+    case PlumaApi.Mailchimp.add_to_audience(form_data, Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)) do
       {:ok, _response} ->
         Logger.info("Successfully added new subscriber #{form_data["email"]} to our Mailchimp List")
         %{status: :ok, detail: :success, stage: :mc}

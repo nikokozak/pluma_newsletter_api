@@ -3,7 +3,7 @@ defmodule PlumaApiWeb.SubscriberController do
   require OK
   use PlumaApiWeb, :controller  
   alias PlumaApiWeb.ErrorView
-  alias PlumaApiWeb.Inputs.Subscriber.NewSubscriber
+  alias PlumaApiWeb.Inputs.Subscriber.{NewSubscriber, GetSubscriber}
   alias PlumaApi.{Subscriber, Repo, Mailchimp}
 
   @list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
@@ -20,6 +20,35 @@ defmodule PlumaApiWeb.SubscriberController do
                  |> Subscriber.preload_referees()
 
     handle_get_subscriber(conn, subscriber_query)
+  end
+
+  def fetch_subscriber(conn, params) do
+    OK.try do
+      valid <- GetSubscriber.validate_input(params)
+      found <- find_in_db(valid)
+    after
+      conn
+      |> put_status(200)
+      |> render("details.json", subscriber: found)
+    rescue
+      :not_found ->
+        conn
+        |> put_status(404)
+        |> put_view(ErrorView)
+        |> render("404.json", message: "Could not find subscriber")
+      {:validation, _} ->
+        conn
+        |> put_status(404)
+        |> put_view(ErrorView)
+        |> render("404.json", message: "Invalid call")
+    end
+  end
+
+  defp find_in_db(%GetSubscriber{} = sub) do
+    case Map.get(sub, :email) do
+      nil -> Subscriber.with_rid(sub.rid) |> Subscriber.preload_referees |> Repo.one |> OK.required(:not_found)
+      email -> Subscriber.with_email(email) |> Subscriber.preload_referees |> Repo.one |> OK.required(:not_found)
+    end
   end
 
   defp handle_get_subscriber(conn, subscriber_query) do

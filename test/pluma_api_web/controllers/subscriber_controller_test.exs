@@ -39,19 +39,31 @@ defmodule PlumaApiWeb.SubscriberControllerTest do
     assert json_response(conn_new, 200)
     assert PlumaApi.MailchimpRepo.check_exists(test_sub.email, @list_id)
 
-    conn_existing = post(conn, Routes.subscriber_path(conn, :add_subscriber), make_new_subscriber_call(test_sub))
+    conn_pending = post(conn, Routes.subscriber_path(conn, :add_subscriber), make_new_subscriber_call(test_sub))
+
+    assert json_response(conn_pending, 400)
+    assert %{"status" => "error",
+      "type" => "mc_sub_pending",
+      "detail" => _email} = Jason.decode!(conn_pending.resp_body)
+
+    {:ok, sub} = Subscriber.insert_changeset(%Subscriber{}, %{email: "nikokozak@gmail.com", rid: Nanoid.generate()})
+                 |> Repo.insert
+    conn_existing = post(conn, Routes.subscriber_path(conn, :add_subscriber), %{"email" => "nikokozak@gmail.com"})
 
     assert json_response(conn_existing, 400)
-    assert %{"status" => "error",
-      "type" => "mc_api_sub_pending_error",
-      "detail" => "pending"} = Jason.decode!(conn_existing.resp_body)
+    assert %{"status" => "error", 
+      "type" => "email_exists",
+      "detail" => email} = Jason.decode!(conn_existing.resp_body)
+    assert String.equivalent?(email, sub.email)
 
-    conn_invalid = post(conn, Routes.subscriber_path(conn, :add_subscriber), %{"fname" => "", "lname" => "", "email" => "not_an_email", "rid" => "111111", "prid" => ""})
+    conn_invalid = post(conn, Routes.subscriber_path(conn, :add_subscriber), %{"email" => "not_an_email"})
 
     assert json_response(conn_invalid, 400)
     assert %{"status" => "error",
-      "type" => "local_param_validation_error",
+      "type" => "validation",
       "detail" => errors} = Jason.decode!(conn_invalid.resp_body)
+
+
   end
 
   @tag test_sub: PlumaApi.Factory.subscriber()

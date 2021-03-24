@@ -62,8 +62,6 @@ defmodule PlumaApiWeb.SubscriberControllerTest do
     assert %{"status" => "error",
       "type" => "validation",
       "detail" => errors} = Jason.decode!(conn_invalid.resp_body)
-
-
   end
 
   @tag test_sub: PlumaApi.Factory.subscriber()

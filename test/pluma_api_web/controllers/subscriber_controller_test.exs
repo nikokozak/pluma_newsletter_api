@@ -37,7 +37,7 @@ defmodule PlumaApiWeb.SubscriberControllerTest do
     conn_new = post(conn, Routes.subscriber_path(conn, :add_subscriber), make_new_subscriber_call(test_sub))
 
     assert json_response(conn_new, 200)
-    assert PlumaApi.MailchimpRepo.check_exists(test_sub.email, @list_id)
+    assert PlumaApi.Mailchimp.check_exists(test_sub.email, @list_id)
 
     conn_pending = post(conn, Routes.subscriber_path(conn, :add_subscriber), make_new_subscriber_call(test_sub))
 

@@ -34,7 +34,7 @@ defmodule PlumaApi.Mailchimp do
 
   @doc """
   Adds a subscriber to a given Mailchimp audience.
-  `subscriber` -> a map of subscriber values or a `Subscriber` struct.
+  `subscriber` -> a map of subscriber values or a `Subscriber` or a `NewSubscriber` struct.
   `list_id` -> the mailchimp list to which the subscriber will be added.
   `status` -> one-of "pending" or "subscribed". "pending" subscribers are not formally in the 
               Mailchimp list: instead, a confirmation request is sent to the subscriber. If
@@ -50,11 +50,22 @@ defmodule PlumaApi.Mailchimp do
     |> MR.add_to_audience(list_id)
     |> process_response
   end
-  def add_to_audience(subscriber, list_id, status \\ "pending", test? \\ false) when status in ["pending", "subscribed"] do
-    encode_subscriber_data_for_mailchimp(subscriber, status, test?)
-    |> MR.add_to_audience(list_id)
-    |> process_response
+  def add_to_audience(sub, list_id), do: add_to_audience(sub, list_id, "pending", false)
+  def add_to_audience(sub, list_id, status) when status in ["pending", "subscribed"], do: add_to_audience(sub, list_id, status, false)
+  def add_to_audience(subscriber = %NewSubscriber{}, list_id, status, test?) when status in ["pending", "subscribed"] do
+    %{ subscriber | status: status, tags: subscriber.tags ++ (if test?, do: ["Test"], else: []) }
+    |> add_to_audience(list_id)
   end
+  def add_to_audience(subscriber = %Subscriber{}, list_id, status, test?) do
+    add_to_audience(Map.from_struct(subscriber), list_id, status, test?)
+  end
+  def add_to_audience(params, list_id, status, test?) when is_map(params) or is_struct(params) do
+    case NewSubscriber.validate_input(params) do
+      {:ok, new_sub} -> add_to_audience(new_sub, list_id, status, test?)
+      error -> error
+    end
+  end
+  def add_to_audience(email, list_id, status, test?), do: add_to_audience(%{"email" => email}, list_id, status, test?)
 
   @doc """
   Adds tags to a given subscriber in a Mailchimp audience. Tags are passed as a list of
@@ -119,33 +130,6 @@ defmodule PlumaApi.Mailchimp do
   def delete_subscriber(email, list_id) do
     MR.delete_subscriber(email, list_id)
     |> process_response(204)
-  end
-
-  defp encode_subscriber_data_for_mailchimp(sub = %Subscriber{}, status, test) when status in ["pending", "subscribed"] do
-    Jason.encode!(%{
-      email_address: sub.email,
-      status: status,
-      tags: (if test, do: ["Test"], else: []),
-      merge_fields: %{
-        RID: sub.rid,
-        PRID: sub.parent_rid
-      }
-    })
-  end
-
-  defp encode_subscriber_data_for_mailchimp(%{"email"=> email, "fname" => fname, "lname" => lname, "rid" => rid, "prid" => prid, "ip_signup" => ip_signup}, status, test) when status in ["subscribed", "pending"] do
-    Jason.encode!(%{
-      email_address: email,
-      status: status,
-      tags: (if test, do: ["Test"], else: []),
-      merge_fields: %{
-        FNAME: fname,
-        LNAME: lname,
-        RID: rid,
-        PRID: prid
-      },
-      ip_signup: ip_signup
-    })
   end
 
   @doc """

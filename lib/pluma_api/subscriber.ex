@@ -2,11 +2,16 @@ defmodule PlumaApi.Subscriber do
   use Ecto.Schema
   import Ecto.Changeset
   import Ecto.Query, only: [from: 2]
+  alias __MODULE__
 
   @default_list Keyword.get(Application.get_env(:pluma_api, :mailchimp), :default_list)
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
+
+  @email_regex ~r/^[^@\s]+@[^@\s]+\.[^@\s]+$/
+  @name_regex ~r/^[\w\s]*$/
+  @rid_regex ~r/^[\w_-]*$/
 
   @derive {Jason.Encoder, only: [:mchimp_id, :email, :list, :rid, :parent_rid]}
 
@@ -22,6 +27,21 @@ defmodule PlumaApi.Subscriber do
     has_many :referees, __MODULE__, foreign_key: :parent_rid, references: :rid
     has_one :referer, __MODULE__, foreign_key: :rid, references: :parent_rid
 
+    # Virtual fields (used for API calls, etc.)
+
+    field :fname, :string, default: "", virtual: true
+    field :lname, :string, default: "", virtual: true
+    field :status, :string, default: "pending", virtual: true
+    field :tags, {:array, :string}, default: [], virtual: true
+    field :ip_signup, :string, default: "", virtual: true
+
+  end
+
+  def call_changeset(subscriber, params) do
+    allowed_params = [:fname, :lname, :email, :rid, :parent_rid, :ip_signup, :tags, :status]
+
+    Ecto.Changeset.change(subscriber)
+    |> changeset_with_allowed_params(allowed_params, params)
   end
 
   def insert_changeset(subscriber, params) do
@@ -34,8 +54,25 @@ defmodule PlumaApi.Subscriber do
   defp changeset_with_allowed_params(subscriber, allowed_params, params \\ %{}) do
     subscriber
     |> cast(params, allowed_params)
-    |> unique_constraint(:email)
     |> validate_required([:email])
+    |> unique_constraint(:email)
+    |> validate_format(:email, @email_regex)
+    |> validate_format(:fname, @name_regex)
+    |> validate_format(:lname, @name_regex)
+    |> validate_format(:rid, @rid_regex)
+    |> validate_format(:parent_rid, @rid_regex)
+    |> validate_inclusion(:status, ["pending", "subscribed"])
+  end
+
+  def validate_params(params) do
+    chgst = %Subscriber{}
+            |> call_changeset(params)
+
+    if chgst.valid? do
+      {:ok, apply_changes(chgst)}
+    else
+      {:error, {:validation, chgst}}
+    end
   end
 
   def with_id(query \\ __MODULE__, id), do: from s in query, where: ^id == s.id 

@@ -1,5 +1,5 @@
 defmodule PlumaApi.Mailchimp do
-  alias PlumaApi.MailchimpRepo
+  alias PlumaApi.Mailchimp.Repo, as: MR
   alias PlumaApi.Subscriber
   alias PlumaApiWeb.Inputs.Subscriber.NewSubscriber
   require OK
@@ -23,12 +23,12 @@ defmodule PlumaApi.Mailchimp do
   Otherwise returns an `:error` tuple.
   """
   def check_health() do
-    MailchimpRepo.check_health()
+    MR.check_health()
     |> process_response
   end
 
   def get_subscriber(email, list_id) do
-    MailchimpRepo.get_subscriber(email, list_id)
+    MR.get_subscriber(email, list_id)
     |> process_response
   end
 
@@ -47,12 +47,12 @@ defmodule PlumaApi.Mailchimp do
   """
   def add_to_audience(subscriber = %NewSubscriber{}, list_id) do
     Jason.encode!(subscriber)
-    |> MailchimpRepo.add_to_audience(list_id)
+    |> MR.add_to_audience(list_id)
     |> process_response
   end
   def add_to_audience(subscriber, list_id, status \\ "pending", test? \\ false) when status in ["pending", "subscribed"] do
     encode_subscriber_data_for_mailchimp(subscriber, status, test?)
-    |> MailchimpRepo.add_to_audience(list_id)
+    |> MR.add_to_audience(list_id)
     |> process_response
   end
 
@@ -61,7 +61,7 @@ defmodule PlumaApi.Mailchimp do
   `maps`, eg: `[%{ name: "VIP", status: "active" }]`
   """
   def tag_subscriber(email, list_id, tags) when is_list(tags) do
-    MailchimpRepo.tag_subscriber(email, list_id, tags)
+    MR.tag_subscriber(email, list_id, tags)
     |> process_response(204)
   end
 
@@ -73,7 +73,7 @@ defmodule PlumaApi.Mailchimp do
   required if we want to update the merge field itself in the future.
   """
   def create_merge_field(list_id, field_name, field_type) do
-    MailchimpRepo.create_merge_field(list_id, field_name, field_type)
+    MR.create_merge_field(list_id, field_name, field_type)
     |> process_response
   end
 
@@ -83,7 +83,7 @@ defmodule PlumaApi.Mailchimp do
   `merge_fields` is a `map` of Merge Fields and the new value desired. Eg. `%{"PRID" => "cokoo"}`
   """
   def update_merge_field(email, list_id, merge_fields) when is_map(merge_fields) do
-    MailchimpRepo.update_merge_field(email, list_id, merge_fields)
+    MR.update_merge_field(email, list_id, merge_fields)
     |> process_response
   end
 
@@ -93,7 +93,7 @@ defmodule PlumaApi.Mailchimp do
   Returns `true` or `false`.
   """
   def check_exists(email, list_id) do
-    case MailchimpRepo.check_exists(email, list_id) do
+    case MR.check_exists(email, list_id) do
       %{status_code: 200} -> true
       _other -> false
     end
@@ -105,7 +105,7 @@ defmodule PlumaApi.Mailchimp do
   Returns `{:ok, %{}}` if successful, `{:error, error}` otherwise.
   """ 
   def archive_subscriber(email, list_id) do
-    MailchimpRepo.archive_subscriber(email, list_id)
+    MR.archive_subscriber(email, list_id)
     |> process_response(204)
   end
 
@@ -117,7 +117,7 @@ defmodule PlumaApi.Mailchimp do
   Returns `{:ok, %{}}` if successful, `{:error, error}` otherwise.
   """ 
   def delete_subscriber(email, list_id) do
-    MailchimpRepo.delete_subscriber(email, list_id)
+    MR.delete_subscriber(email, list_id)
     |> process_response(204)
   end
 

@@ -1,7 +1,6 @@
 defmodule PlumaApi.Mailchimp do
   alias PlumaApi.Mailchimp.Repo, as: MR
   alias PlumaApi.Subscriber
-  alias PlumaApiWeb.Inputs.Subscriber.NewSubscriber
   require OK
 
   @default_success_code 200
@@ -45,23 +44,21 @@ defmodule PlumaApi.Mailchimp do
 
   Returns `{:ok, body}` or `{:error, error_body}`
   """
-  def add_to_audience(subscriber = %NewSubscriber{}, list_id) do
+  def add_to_audience(subscriber = %Subscriber{}, list_id) do
     Jason.encode!(subscriber)
     |> MR.add_to_audience(list_id)
     |> process_response
   end
-  def add_to_audience(sub, list_id), do: add_to_audience(sub, list_id, "pending", false)
-  def add_to_audience(sub, list_id, status) when status in ["pending", "subscribed"], do: add_to_audience(sub, list_id, status, false)
-  def add_to_audience(subscriber = %NewSubscriber{}, list_id, status, test?) when status in ["pending", "subscribed"] do
-    %{ subscriber | status: status, tags: subscriber.tags ++ (if test?, do: ["Test"], else: []) }
+  def add_to_audience(sub, list_id, status \\ "pending", test? \\ false)
+  def add_to_audience(sub = %Subscriber{}, list_id, status, test?) do
+    %{ sub | status: status, tags: sub.tags ++ (if test?, do: ["Test"], else: []) }
     |> add_to_audience(list_id)
   end
-  def add_to_audience(subscriber = %Subscriber{}, list_id, status, test?) do
-    add_to_audience(Map.from_struct(subscriber), list_id, status, test?)
-  end
-  def add_to_audience(params, list_id, status, test?) when is_map(params) or is_struct(params) do
-    case NewSubscriber.validate_input(params) do
-      {:ok, new_sub} -> add_to_audience(new_sub, list_id, status, test?)
+  def add_to_audience(params, list_id, status, test?) when is_map(params) do
+    case Subscriber.validate_params(params) do
+      {:ok, new_sub} ->
+        %{ new_sub | status: status, tags: new_sub.tags ++ (if test?, do: ["Test"], else: []) }
+        |> add_to_audience(list_id)
       error -> error
     end
   end

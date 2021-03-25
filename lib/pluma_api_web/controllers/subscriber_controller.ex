@@ -3,7 +3,6 @@ defmodule PlumaApiWeb.SubscriberController do
   require OK
   use PlumaApiWeb, :controller  
   alias PlumaApiWeb.ErrorView
-  alias PlumaApiWeb.Inputs.Subscriber.{NewSubscriber, GetSubscriber}
   alias PlumaApi.{Subscriber, Repo, Mailchimp}
 
   @list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
@@ -13,8 +12,7 @@ defmodule PlumaApiWeb.SubscriberController do
   """
   def get_subscriber(conn, params) do
     OK.try do
-      valid <- GetSubscriber.validate_input(params)
-      found <- find_in_db(valid)
+      found <- find_in_db(params)
     after
       conn
       |> put_status(200)
@@ -25,19 +23,14 @@ defmodule PlumaApiWeb.SubscriberController do
         |> put_status(404)
         |> put_view(ErrorView)
         |> render("404.json", message: "Could not find subscriber")
-      {:validation, _} ->
-        conn
-        |> put_status(404)
-        |> put_view(ErrorView)
-        |> render("404.json", message: "Invalid call")
     end
   end
 
-  defp find_in_db(%GetSubscriber{} = sub) do
-    case Map.get(sub, :email) do
-      nil -> Subscriber.with_rid(sub.rid) |> Subscriber.preload_referees |> Repo.one |> OK.required(:not_found)
-      email -> Subscriber.with_email(email) |> Subscriber.preload_referees |> Repo.one |> OK.required(:not_found)
-    end
+  defp find_in_db(%{ "email" => email }) do
+    Subscriber.with_email(email) |> Subscriber.preload_referees |> Repo.one |> OK.required(:not_found)
+  end
+  defp find_in_db(%{ "rid" => rid }) do
+    Subscriber.with_rid(rid) |> Subscriber.preload_referees |> Repo.one |> OK.required(:not_found)
   end
 
   @doc """
@@ -66,7 +59,7 @@ defmodule PlumaApiWeb.SubscriberController do
   @spec add_subscriber(conn :: Plug.Conn.t, params :: map) :: %Plug.Conn{}
   def add_subscriber(conn, params) do
     OK.try do
-      validated <- NewSubscriber.validate_input(params)
+      validated <- Subscriber.validate_params(params)
       safe <- ensure_doesnt_exist(validated)
       _result <- add_to_mailchimp(safe, @list_id)
     after

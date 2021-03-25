@@ -13,7 +13,30 @@ defmodule PlumaApi.Subscriber do
   @name_regex ~r/^[\w\s]*$/
   @rid_regex ~r/^[\w_-]*$/
 
-  @derive {Jason.Encoder, only: [:mchimp_id, :email, :list, :rid, :parent_rid]}
+  #@derive {Jason.Encoder, only: [:mchimp_id, :email, :list, :rid, :parent_rid]}
+
+  # spares us having to define separate functions throughout our controllers
+  # to encode our fields back into JSON.
+  defimpl Jason.Encoder, for: [__MODULE__] do
+    
+    def encode(sub, opts) do
+
+      Jason.Encode.map(%{
+        email_address: sub.email,
+        status: sub.status,
+        tags: sub.tags,
+        merge_fields: %{
+          FNAME: sub.fname,
+          LNAME: sub.lname,
+          RID: sub.rid,
+          PRID: sub.parent_rid
+        },
+        ip_signup: sub.ip_signup
+      }, opts)
+
+      end
+
+  end
 
   schema "subscribers" do
 

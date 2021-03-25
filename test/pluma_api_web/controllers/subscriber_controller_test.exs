@@ -64,24 +64,6 @@ defmodule PlumaApiWeb.SubscriberControllerTest do
       "detail" => errors} = Jason.decode!(conn_invalid.resp_body)
   end
 
-  @tag test_sub: PlumaApi.Factory.subscriber()
-  test "new_subscriber/2", %{conn: conn, test_sub: test_sub} do
-    conn_new = post(conn, Routes.subscriber_path(conn, :new_subscriber), make_new_subscriber_call(test_sub))
-
-    assert json_response(conn_new, 200)
-    assert %{"status" => _status, "detail" => _detail, "stage" => _stage} = Jason.decode!(conn_new.resp_body)
-    assert PlumaApi.MailchimpRepo.check_exists(test_sub.email, @list_id)
-
-    conn_existing = post(conn, Routes.subscriber_path(conn, :new_subscriber), make_new_subscriber_call(test_sub))
-
-    assert json_response(conn_existing, 400)
-    assert %{"status" => _status, "detail" => _detail, "stage" => _stage} = Jason.decode!(conn_new.resp_body)
-
-    conn_invalid = post(conn, Routes.subscriber_path(conn, :new_subscriber), %{"fname" => "", "lname" => "", "email" => "not_an_email", "rid" => "111111", "prid" => ""})
-
-    assert json_response(conn_invalid, 400)
-  end
-
   defp make_new_subscriber_call(factory_sub) when is_map(factory_sub) do
     %{
       "fname" => Faker.Person.En.first_name(),

@@ -8,21 +8,10 @@ defmodule PlumaApiWeb.SubscriberController do
 
   @list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
 
-  def get_subscriber(conn, _params = %{"email" => email}) do
-    subscriber_query = Subscriber.with_email(email)
-                 |> Subscriber.preload_referees
-    
-    handle_get_subscriber(conn, subscriber_query)
-  end
-
-  def get_subscriber(conn, _params = %{"rid" => rid}) do
-    subscriber_query = Subscriber.with_rid(rid)
-                 |> Subscriber.preload_referees()
-
-    handle_get_subscriber(conn, subscriber_query)
-  end
-
-  def fetch_subscriber(conn, params) do
+  @doc """
+  Retrieves a `%Subscriber{}` from the local database and returns it in JSON format. 
+  """
+  def get_subscriber(conn, params) do
     OK.try do
       valid <- GetSubscriber.validate_input(params)
       found <- find_in_db(valid)
@@ -48,20 +37,6 @@ defmodule PlumaApiWeb.SubscriberController do
     case Map.get(sub, :email) do
       nil -> Subscriber.with_rid(sub.rid) |> Subscriber.preload_referees |> Repo.one |> OK.required(:not_found)
       email -> Subscriber.with_email(email) |> Subscriber.preload_referees |> Repo.one |> OK.required(:not_found)
-    end
-  end
-
-  defp handle_get_subscriber(conn, subscriber_query) do
-    case Repo.one(subscriber_query) do
-      nil ->
-        conn
-        |> put_status(404)
-        |> put_view(ErrorView)
-        |> render("404.json", message: "Could not find subscriber")
-      sub ->
-        conn
-        |> put_status(200)
-        |> render("details.json", subscriber: sub)
     end
   end
 
@@ -99,42 +74,7 @@ defmodule PlumaApiWeb.SubscriberController do
       respond(conn, 200, safe)
     rescue
       error -> 
-        respond(conn, 400, handle_error(error))
-    end
-  end
-
-  # We consider an existing subscriber error a "pending" error given that we would shortcircuit
-  # before if the email was already present in our database, meaning a fully-subscribed user was found.
-  defp handle_error({:mc_add_sub_failure, {sub, %{"status" => 400}}}) do
-    Logger.warn("Error adding subscriber #{sub.email} to MC audience. Subscriber
-      already added, but not present in our local DB, likely waiting on confirmation email.")
-    %{status: :error, type: :mc_sub_pending, detail: sub.email}
-  end
-  defp handle_error({:mc_add_sub_failure, {sub, body}}) do
-    Logger.warn("Error adding subscriber #{sub.email} to MC audience. Received
-      status #{body["status"]} and message \"#{body["title"]}\" from Mailchimp API.")
-    %{status: :error, type: :mc_unknown, detail: body["status"]}
-  end
-  defp handle_error({:local_email_found, sub}) do
-    Logger.warn("Error adding new subscriber #{sub.email} to our DB, email already
-      in DB.")
-    %{status: :error, type: :email_exists, detail: sub.email}
-  end
-  defp handle_error({:validation, chgst = %Ecto.Changeset{}}) do
-    Logger.warn("There was an error validating the following fields: #{Jason.encode!(Keyword.keys(chgst.errors))} for new sub #{chgst.changes.email}")
-    %{status: :error, type: :validation, detail: Keyword.keys(chgst.errors)}
-  end
-
-  defp respond(conn, status_code, msg) do
-    conn
-    |> put_status(status_code)
-    |> json(msg)
-  end
-
-  defp add_to_mailchimp(subscriber, list_id) do
-    case Mailchimp.add_to_audience(subscriber, list_id) do
-      {:ok, body} -> {:ok, body}
-      {:error, body} -> {:error, {:mc_add_sub_failure, {subscriber, body}}}
+        respond(conn, 400, handle_error(:add_subscriber, error))
     end
   end
 
@@ -144,6 +84,13 @@ defmodule PlumaApiWeb.SubscriberController do
       safe_sub = ensure_no_rid_collision(subscriber)
     after
       safe_sub
+    end
+  end
+
+  defp add_to_mailchimp(subscriber, list_id) do
+    case Mailchimp.add_to_audience(subscriber, list_id) do
+      {:ok, body} -> {:ok, body}
+      {:error, body} -> {:error, {:mc_add_sub_failure, {subscriber, body}}}
     end
   end
 
@@ -165,99 +112,40 @@ defmodule PlumaApiWeb.SubscriberController do
     end
   end
 
-  defp assign_new_rid(subscriber) do
-    %{ subscriber | rid: Nanoid.generate() }
+  defp assign_new_rid(subscriber), do: %{ subscriber | rid: Nanoid.generate() }
+  
+  # We consider an existing subscriber error a "pending" error given that we would shortcircuit
+  # before if the email was already present in our database, meaning a fully-subscribed user was found.
+  defp handle_error(:add_subscriber, {:mc_add_sub_failure, {sub, %{"status" => 400}}}) do
+    Logger.warn("Error adding subscriber #{sub.email} to MC audience. Subscriber
+      already added, but not present in our local DB, likely waiting on confirmation email.")
+    %{status: :error, type: :mc_sub_pending, detail: sub.email}
+  end
+  defp handle_error(:add_subscriber, {:mc_add_sub_failure, {sub, body}}) do
+    Logger.warn("Error adding subscriber #{sub.email} to MC audience. Received
+      status #{body["status"]} and message \"#{body["title"]}\" from Mailchimp API.")
+    %{status: :error, type: :mc_unknown, detail: body["status"]}
+  end
+  defp handle_error(:add_subscriber, {:local_email_found, sub}) do
+    Logger.warn("Error adding new subscriber #{sub.email} to our DB, email already
+      in DB.")
+    %{status: :error, type: :email_exists, detail: sub.email}
+  end
+  defp handle_error(:add_subscriber, {:validation, chgst = %Ecto.Changeset{}}) do
+    Logger.warn("There was an error validating the following fields: #{Jason.encode!(Keyword.keys(chgst.errors))} for new sub #{chgst.changes.email}")
+    %{status: :error, type: :validation, detail: Keyword.keys(chgst.errors)}
   end
 
-  def new_subscriber(conn, params = %{"email" => email}) do
-    Logger.info("Received new subscription request for #{email}")
-    params
-    |> validate_fields
-    |> check_exists
-    |> add_to_mc_list
-    |> respond_to_request(conn)
-  end
-
-  # TODO: Add validation for ip_signup
-  defp validate_fields(form_data = %{"email" => email, "fname" => fname, "lname" => lname, "rid" => rid, "prid" => prid}) do
-    with {:email, true} <- is_valid?(:email, email),
-         {:fname, true} <- is_valid?(:fname, fname),
-         {:lname, true} <- is_valid?(:lname, lname),
-         {:rid, true} <- is_valid?(:rid, rid),
-         {:prid, true} <- is_valid?(:prid, prid)
-    do
-      Logger.info("All fields for #{email} are sanitized")
-      %{status: :ok, data: form_data, stage: :sanitize}
-    else
-      {field, false} -> 
-        Logger.warn("There was an error sanitizing field #{field}")
-        %{status: :error, detail: field, stage: :sanitize}
-    end
-  end
-
-  defp is_valid?(field_type, field_data), do: {field_type, String.match?(field_data, reg(field_type))}
-
-  defp reg(type) when is_atom(type) do
-    case type do
-      :email -> ~r/^[^@\s]+@[^@\s]+\.[^@\s]+$/
-      :fname -> ~r/^[\w\s]*$/
-      :lname -> ~r/^[\w\s]*$/
-      :rid -> ~r/^[\w_-]*$/ 
-      :prid -> ~r/^[\w_-]*$/
-    end
-  end
-
-  defp check_exists(msg = %{status: :error}), do: msg
-  defp check_exists(%{status: :ok, data: form_data}) do
-    sub = Subscriber.with_email(form_data["email"]) |> Repo.one
-    rid = Subscriber.with_rid(form_data["rid"]) |> Repo.one
-    
-    case {is_nil(sub), is_nil(rid)} do
-      {true, true} -> 
-        Logger.info("No trace of new subscriber #{form_data["email"]} found in DB")
-        %{status: :ok, data: form_data, stage: :check_exists}
-      {true, false} ->
-        Logger.warn("RID entry for #{form_data["email"]} found in DB: #{form_data["rid"]}")
-        Logger.warn("Adding new RID to form_data for #{form_data["email"]}")
-        form_data = Map.put(form_data, "rid", "#{Nanoid.generate(10)}")
-        %{status: :ok, data: form_data, stage: :check_exists}
-      {_x, _y} -> 
-        Logger.warn("RID and Email entry for #{form_data["email"]} found in DB")
-        %{status: :error, detail: "email_exists", stage: :check_exists}
-    end
-  end
-
-  defp add_to_mc_list(msg = %{status: :error}), do: msg
-  defp add_to_mc_list(%{status: :ok, data: form_data}) do
-    case PlumaApi.Mailchimp.add_to_audience(form_data, Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)) do
-      {:ok, _response} ->
-        Logger.info("Successfully added new subscriber #{form_data["email"]} to our Mailchimp List")
-        %{status: :ok, detail: :success, stage: :mc}
-      {:error, %{"status" => 400}} ->
-        Logger.info("Subscriber already added, waiting on email-confirmation for #{form_data["email"]}")
-        %{status: :error, detail: "pending", stage: :mc}
-      {:error, %{"status" => status_code, "title" => body}} -> 
-        Logger.warn("There was an error adding new subscriber #{form_data["email"]} to our Mailchimp List.")
-        Logger.warn("Received a response with code #{status_code} and body #{body}")
-        %{status: :error, detail: %{ body: body, status_code: status_code}, stage: :mc}  
-      _other -> 
-        Logger.warn("There was an unhandled error adding new subscriber #{form_data["email"]} to our Mailchimp List.")
-        %{status: :error, detail: "There was an unhandled error when interfacing with Mailchimp", stage: :mc}
-    end
-  end
-
-  defp respond_to_request(msg = %{status: :error}, conn) do
+  defp respond(conn, status_code, msg) do
     conn
-    |> put_status(400)
-    |> json(msg)
-  end
-  defp respond_to_request(msg = %{status: :ok}, conn) do
-    conn
-    |> put_status(200)
+    |> put_status(status_code)
     |> json(msg)
   end
 
-  def delete(conn, %{"email" => email}) do
+  @doc """
+  Unused atm.
+  """
+  def delete_subscriber(conn, %{"email" => email}) do
     subscriber = 
       Subscriber.with_email(email)
       |> Repo.one

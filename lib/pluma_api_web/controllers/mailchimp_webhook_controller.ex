@@ -149,11 +149,9 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   end
 
   defp has_parent_rid(child) do
-    if not is_nil(child.parent_rid) and String.length(child.parent_rid) != 0 do
-      true
-    else
-      false
-    end
+    if not is_nil(child.parent_rid) and String.length(child.parent_rid) != 0,
+      do: true,
+    else: false
   end
 
   def log_error({:local_insert_failed, {params, chgst}}) do

@@ -2,8 +2,6 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   require Logger
   require OK
   use PlumaApiWeb, :controller
-  alias PlumaApi.Subscriber
-  alias PlumaApi.Repo
   alias PlumaApi.Mailchimp
 
   @moduledoc """
@@ -36,32 +34,21 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   Syncs RID's if there's a mismatch.
   """
   def handle(conn, params = %{ "type" => "subscribe" }) do
-    OK.try do
-      params = digest_webhook_params(params)
-      subscriber <- insert_or_retrieve_subscriber(params)
-      _synced_subscriber <- Mailchimp.sync_remote_and_local_RIDs(subscriber, params, @list_id)
-      _updated_parent <- update_parent(subscriber)
-    after
-      webhook_response(conn, 200)
-    rescue
-      error ->
+    params = digest_webhook_params(params)
+    case Mailchimp.confirm_subscription(params, @list_id) do
+      {:ok, _sub} -> webhook_response(conn, 200)
+      {:error, error} ->
         log_error(error)
         webhook_response(conn, 202)
     end
   end
+
   def handle(conn, params = %{ "type" => "unsubscribe" }) do
-    OK.try do
-      params = digest_webhook_params(params)
-      subscriber <- find_in_db(params)
-      _deleted <- remove_subscriber(subscriber)
-    after
-      webhook_response(conn, 204)
-    rescue
-      :local_not_found -> # Silent failure, we don't really care.
-        webhook_response(conn, 202)
-      error ->
+    case Mailchimp.unsubscribe(params["email"]) do
+      {:ok, _deleted} -> webhook_response(conn, 204)
+      {:error, error} -> 
         log_error(error)
-        webhook_response(conn, 202)    
+        webhook_response(conn, 202)
     end
   end
 
@@ -75,83 +62,6 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
         parent_rid: merge_fields["PRID"],
         list: sub_data["list_id"]
     }
-  end
-  
-  # Returns {:ok, %Subscriber{}} or {:error, {:local_insert_failed, {sub_params, changeset}}}
-  defp insert_or_retrieve_subscriber(params) do
-    case find_in_db (params) do
-      {:error, :local_not_found} -> insert_subscriber(params)
-      {:ok, sub} -> {:ok, sub}
-    end
-  end
-
-  defp find_in_db(params) do
-    Subscriber.with_email(params.email)
-    |> Repo.one
-    |> case do
-      nil -> {:error, :local_not_found}
-      sub -> {:ok, sub}
-    end
-  end
-
-  defp insert_subscriber(params) do
-    Subscriber.insert_changeset(%Subscriber{}, params)
-    |> Repo.insert
-    |> case do
-      {:ok, sub} -> {:ok, sub}
-      {:error, chgst} -> {:error, {:local_insert_failed, {params, chgst}}}
-    end
-  end
-
-  defp remove_subscriber(subscriber = %Subscriber{}) do
-    case Repo.delete(subscriber) do
-      {:ok, sub} -> {:ok, sub}
-      {:error, chgst} -> {:error, {:local_delete_failed, {subscriber, chgst}}}
-    end
-  end
-
-  # Returns 
-  # {:ok, :no_parent} | 
-  # {:ok, :vip_not_granted} | 
-  # {:ok, %Subscriber{}} (if granted) | 
-  # {:error, {:error_tagging_subscriber, {subscriber, error_response}}}
-  defp update_parent(child) do
-    case get_parent(child) do
-      {:ok, parent} -> maybe_award_vip(parent)
-      {:error, nil} -> {:ok, :no_parent}
-    end
-  end
-
-  defp get_parent(child) do
-    if has_parent_rid(child) do
-      Subscriber.with_rid(child.parent_rid)
-      |> Repo.one
-      |> OK.wrap # Wrap in {:ok, ...}
-    else
-      {:error, nil}
-    end
-  end
-
-  # Returns 
-  # {:ok, %Subscriber{}} |
-  # {:ok, vip_not_granted} |
-  # {:error, {:error_tagging_subscriber, {sub, response}}}
-  defp maybe_award_vip(subscriber = %Subscriber{}) do
-    subscriber = Repo.preload(subscriber, :referees)
-    if length(subscriber.referees) == 3 do
-      case Mailchimp.tag_subscriber(subscriber.email, @list_id, [%{ name: "VIP", status: "active" }]) do
-        {:ok, _response} -> {:ok, subscriber}
-        {:error, response} -> {:error, {:error_tagging_subscriber, {subscriber, response}}}
-      end
-    else
-      {:ok, :vip_not_granted}
-    end
-  end
-
-  defp has_parent_rid(child) do
-    if not is_nil(child.parent_rid) and String.length(child.parent_rid) != 0,
-      do: true,
-    else: false
   end
 
   def log_error({:local_insert_failed, {params, chgst}}) do

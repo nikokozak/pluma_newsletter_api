@@ -58,54 +58,14 @@ defmodule PlumaApiWeb.SubscriberController do
   """
   @spec add_subscriber(conn :: Plug.Conn.t, params :: map) :: %Plug.Conn{}
   def add_subscriber(conn, params) do
-    OK.try do
-      validated <- Subscriber.validate_params(params)
-      safe <- ensure_doesnt_exist(validated)
-      _result <- add_to_mailchimp(safe, @list_id)
-    after
-      Logger.info("Successfully subscribed #{safe.email}")
-      respond(conn, 200, safe)
-    rescue
-      error -> 
+    case Mailchimp.subscribe(params, @list_id) do
+      {:ok, response} ->
+        Logger.info("Successfully subscribed #{response["body"]}")
+        respond(conn, 200, response)
+      {:error, error} ->
         respond(conn, 400, handle_error(:add_subscriber, error))
     end
   end
-
-  defp ensure_doesnt_exist(subscriber) do
-    OK.for do
-      _ <- ensure_email_not_in_db(subscriber)
-      safe_sub = ensure_no_rid_collision(subscriber)
-    after
-      safe_sub
-    end
-  end
-
-  defp add_to_mailchimp(subscriber, list_id) do
-    case Mailchimp.add_to_audience(subscriber, list_id) do
-      {:ok, body} -> {:ok, body}
-      {:error, body} -> {:error, {:mc_add_sub_failure, {subscriber, body}}}
-    end
-  end
-
-  defp ensure_email_not_in_db(subscriber) do
-    Subscriber.with_email(subscriber.email)
-    |> Repo.one
-    |> case do
-      nil -> {:ok, subscriber}
-      sub -> {:error, {:local_email_found, sub}}
-    end
-  end
-
-  defp ensure_no_rid_collision(subscriber) do
-    Subscriber.with_rid(subscriber.rid)
-    |> Repo.one
-    |> case do
-      nil -> {:ok, subscriber}
-      _sub -> {:ok, assign_new_rid(subscriber)}
-    end
-  end
-
-  defp assign_new_rid(subscriber), do: %{ subscriber | rid: Nanoid.generate() }
   
   # We consider an existing subscriber error a "pending" error given that we would shortcircuit
   # before if the email was already present in our database, meaning a fully-subscribed user was found.
@@ -133,27 +93,6 @@ defmodule PlumaApiWeb.SubscriberController do
     conn
     |> put_status(status_code)
     |> json(msg)
-  end
-
-  @doc """
-  Unused atm.
-  """
-  def delete_subscriber(conn, %{"email" => email}) do
-    subscriber = 
-      Subscriber.with_email(email)
-      |> Repo.one
-
-    case Repo.delete(subscriber) do
-      {:ok, deleted} ->
-        conn
-        |> put_status(200)
-        |> render("deleted.json", subscriber: deleted)
-      {:error, _error} ->
-        conn
-        |> put_status(400)
-        |> put_view(ErrorView)
-        |> render("400.json", message: "Could not delete subscriber")
-    end
   end
 
 end

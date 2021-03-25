@@ -4,6 +4,8 @@ defmodule PlumaApi.Mailchimp.Repo do
   @base_url "https://" <> @api_server <> ".api.mailchimp.com/3.0/"
   @hackney_auth [basic_auth: {"plumachile", @api_key}]
 
+  @default_success_code 200
+
   @moduledoc """
   A set of functions for interacting with the Mailchimp API. The `list_id`, which
   is necessary for most of these functions, refers to the specific audience list we
@@ -20,8 +22,8 @@ defmodule PlumaApi.Mailchimp.Repo do
   wasn't found by the Mailchimp API for example).
   """
 
-  @type success_response() :: HTTPoison.Response.t()
-  @type error_response() :: HTTPoison.Response.t()
+  @type success_response() :: {:ok, map}
+  @type error_response() :: {:error, map}
 
   @spec check_health() :: success_response | error_response
   @spec get_subscriber(email :: String.t, list_id :: String.t) :: success_response | error_response
@@ -29,7 +31,7 @@ defmodule PlumaApi.Mailchimp.Repo do
   @spec tag_subscriber(email :: String.t, list_id :: String.t, tags :: list(%{name: String.t, status: String.t})) :: success_response | error_response
   @spec create_merge_field(list_id :: String.t, field_name :: String.t, field_type :: String.t) :: success_response | error_response
   @spec update_merge_field(email :: String.t, list_id :: String.t, merge_fields :: map) :: success_response | error_response
-  @spec check_exists(email :: String.t, list_id :: String.t) :: success_response | error_response
+  @spec check_exists(email :: String.t, list_id :: String.t) :: boolean
   @spec archive_subscriber(email :: String.t, list_id :: String.t) :: success_response | error_response
   @spec delete_subscriber(email :: String.t, list_id :: String.t) :: success_response | error_response
 
@@ -42,6 +44,7 @@ defmodule PlumaApi.Mailchimp.Repo do
       [],
       [hackney: @hackney_auth]
     )
+    |> process_response
   end
 
   @doc """
@@ -59,6 +62,7 @@ defmodule PlumaApi.Mailchimp.Repo do
       [],
       [hackney: @hackney_auth]
     )
+    |> process_response
   end
 
   @doc """
@@ -74,10 +78,12 @@ defmodule PlumaApi.Mailchimp.Repo do
       [],
       [hackney: @hackney_auth]
     )
+    |> process_response
   end
 
   @doc """
-  Adds tags to a given subscriber in a Mailchimp audience.
+  Adds tags to a given subscriber in a Mailchimp audience. Tags are passed as a list of
+  `maps`, eg: `[%{ name: "VIP", status: "active" }]`
 
   Returns a `HTTPoison.Response{status_code: 204}` struct if successful.
   """
@@ -88,6 +94,7 @@ defmodule PlumaApi.Mailchimp.Repo do
       [],
       [hackney: @hackney_auth]
     )
+    |> process_response(204)
   end
 
   @doc """
@@ -111,11 +118,14 @@ defmodule PlumaApi.Mailchimp.Repo do
       [],
       [hackney: @hackney_auth]
     )
+    |> process_response
   end
 
   @doc """
   Updates a set of Merge Fields (custom mailchimp subscriber fields) for a given subscriber.
   
+  `merge_fields` is a `map` of Merge Fields and the new value desired. Eg. `%{"PRID" => "cokoo"}`
+
   Returns a `HTTPoison.Response{status_code: 200}` struct if successful.
   """
   def update_merge_field(email, list_id, merge_fields) when is_map(merge_fields) do
@@ -125,6 +135,7 @@ defmodule PlumaApi.Mailchimp.Repo do
       [],
       [hackney: @hackney_auth]
     )
+    |> process_response
   end
 
   @doc """
@@ -136,6 +147,10 @@ defmodule PlumaApi.Mailchimp.Repo do
       [],
       [hackney: @hackney_auth]
     )
+    |> case do
+      %{status_code: 200} -> true
+      _other -> false
+    end
   end
 
   @doc """
@@ -149,6 +164,7 @@ defmodule PlumaApi.Mailchimp.Repo do
       [],
       [hackney: @hackney_auth]
     )
+    |> process_response(204)
   end
 
   @doc """
@@ -165,6 +181,17 @@ defmodule PlumaApi.Mailchimp.Repo do
       [],
       [hackney: @hackney_auth]
     )
+    |> process_response(204)
   end
+
+  defp process_response(response, success_code \\ @default_success_code) do
+    case response do
+      %{ status_code: ^success_code, body: body } -> {:ok, decode_response_body(body)}
+      %{ status_code: _error_code, body: body } -> {:error, decode_response_body(body)}
+    end
+  end
+
+  defp decode_response_body(""), do: %{}
+  defp decode_response_body(body), do: Jason.decode!(body)
 
 end

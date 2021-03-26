@@ -48,7 +48,8 @@ defmodule PlumaApi.MixProject do
       {:nanoid, "~> 2.0.4"},
       {:faker, "~> 0.16", only: :test},
       {:cors_plug, "~> 2.0"},
-      {:ok, "~> 2.3"}
+      {:ok, "~> 2.3"},
+      {:csv, "~> 2.4"}
     ]
   end
 

@@ -60,6 +60,13 @@ defmodule PlumaApi.Subscriber do
 
   end
 
+  def changeset(subscriber, params) do
+    allowed_params = [:mchimp_id, :email, :list, :rid, :parent_rid, :fname, :lname, :status, :tags, :ip_signup]
+
+    Ecto.Changeset.change(subscriber)
+    |> changeset_with_allowed_params(allowed_params, params)
+  end
+
   def call_changeset(subscriber, params) do
     allowed_params = [:fname, :lname, :email, :rid, :parent_rid, :ip_signup, :tags, :status]
 

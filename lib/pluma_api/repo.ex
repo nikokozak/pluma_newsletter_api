@@ -54,40 +54,57 @@ defmodule PlumaApi.Repo do
   def upsert_from_CSV(file, status) when status in ["subscribed", "archived", "cleaned"] do
     read_from_csv(file)
     |> Stream.each(&upsert_csv_row(&1, status))
+    |> Stream.run
   end
 
   def upsert_csv_row(row, status) do
     Subscriber.with_email(row["Correo"])
     |> PlumaApi.Repo.one
     |> case do
-      nil -> Subscriber.insert_changeset(%Subscriber{}, csv_to_sub_params(row, status))
+      nil -> %Subscriber{}
       found -> found
     end
+    |> Subscriber.changeset(csv_to_sub_params(row, status))
     |> PlumaApi.Repo.insert_or_update
+    |> case do
+      {:ok, sub} -> IO.inspect("Updated or inserted #{sub.email}")
+      {:error, chgst} -> IO.inspect(chgst)
+    end
   end
 
-  defp csv_to_sub_params(row, status) do
+  def csv_to_sub_params(row, status) do
       %{
         email: row["Correo"],
         fname: row["Nombre"],
         lname: row["Apellido"],
-        ip_signup: row["OPTIN_IP"],
+        ip_signup: longest(row["OPTIN_IP"], row["CONFIRM_IP"]),
         status: status,
         tags: parse_tags(row["TAGS"]),
-        mchimp_id: (:crypto.hash(:md5, String.downcase(row["Correo"])) |> Base.encode16),
+        mchimp_id: hashify_email(row["Correo"]),
         rid: row["RID"],
-        parent_rid: row["ParentRID"]
+        parent_rid: row["ParentRID"],
+        country: row["CC"]
       }
   end
 
   def read_from_csv(file) do
     Path.expand(file)
     |> File.stream!
-    |> CSV.decode(headers: true)
+    |> CSV.decode!(headers: true)
   end
 
   defp parse_tags(tags) do
     String.split(tags, ", ") 
     |> Enum.map(&String.trim(&1, "\""))
+  end
+
+  defp hashify_email(email) do
+    :crypto.hash(:md5, String.downcase(email)) |> Base.encode16 |> String.downcase
+  end
+
+  defp longest(a, b) do
+    if String.length(a) > String.length(b),
+      do: a,
+    else: b
   end
 end

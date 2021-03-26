@@ -8,6 +8,7 @@ defmodule PlumaApi.Repo.Migrations.AddLocalMcFieldsToSub do
       add :lname, :string
       add :ip_signup, :string
       add :tags, {:array, :string}
+      add :country, :string
     end
   end
 end

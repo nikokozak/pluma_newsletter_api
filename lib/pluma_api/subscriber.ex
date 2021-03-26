@@ -10,8 +10,8 @@ defmodule PlumaApi.Subscriber do
   @foreign_key_type :binary_id
 
   @email_regex ~r/^[^@\s]+@[^@\s]+\.[^@\s]+$/
-  @name_regex ~r/^[\w\s]*$/
-  @rid_regex ~r/^[\w_-]*$/
+  @name_regex ~r/^[\w\s\-]*$/u
+  @rid_regex ~r/^[\w_\-']*$/
 
   #@derive {Jason.Encoder, only: [:mchimp_id, :email, :list, :rid, :parent_rid]}
 
@@ -40,11 +40,11 @@ defmodule PlumaApi.Subscriber do
 
   schema "subscribers" do
 
-    field :mchimp_id, :string
+    field :mchimp_id, :string, default: ""
     field :email, :string, null: false
     field :list, :string, default: @default_list
 
-    field :rid, :string
+    field :rid, :string, default: ""
     field :parent_rid, :string, default: ""
 
     has_many :referees, __MODULE__, foreign_key: :parent_rid, references: :rid
@@ -57,6 +57,7 @@ defmodule PlumaApi.Subscriber do
     field :status, :string, default: "pending"
     field :tags, {:array, :string}, default: []
     field :ip_signup, :string, default: ""
+    field :country, :string, default: ""
 
   end
 

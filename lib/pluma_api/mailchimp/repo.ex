@@ -27,13 +27,19 @@ defmodule PlumaApi.Mailchimp.Repo do
 
   @spec check_health() :: success_response | error_response
   @spec get_subscriber(email :: String.t, list_id :: String.t) :: success_response | error_response
-  @spec add_to_audience(subscriber_data :: binary, list_id :: String.t) :: success_response | error_response
+  @spec add_to_list(subscriber_data :: binary, list_id :: String.t) :: success_response | error_response
   @spec tag_subscriber(email :: String.t, list_id :: String.t, tags :: list(%{name: String.t, status: String.t})) :: success_response | error_response
   @spec create_merge_field(list_id :: String.t, field_name :: String.t, field_type :: String.t) :: success_response | error_response
   @spec update_merge_field(email :: String.t, list_id :: String.t, merge_fields :: map) :: success_response | error_response
   @spec check_exists(email :: String.t, list_id :: String.t) :: boolean
   @spec archive_subscriber(email :: String.t, list_id :: String.t) :: success_response | error_response
   @spec delete_subscriber(email :: String.t, list_id :: String.t) :: success_response | error_response
+
+  @doc """
+  Applies MD5 encoding to a string - this is necessary in order to pass the email
+  as a parameter to the Mailchimp API.
+  """
+  def hashify_email(email), do: :crypto.hash(:md5, String.downcase(email)) |> Base.encode16 |> String.downcase
 
   @doc """
   Checks to see if the Mailchimp API is responding.
@@ -48,10 +54,19 @@ defmodule PlumaApi.Mailchimp.Repo do
   end
 
   @doc """
-  Applies MD5 encoding to a string - this is necessary in order to pass the email
-  as a parameter to the Mailchimp API.
+  Check whether a given email exists in the provided list.
   """
-  def hashify_email(email), do: :crypto.hash(:md5, String.downcase(email)) |> Base.encode16 |> String.downcase
+  def check_exists(email, list_id) do
+    HTTPoison.get!(
+      @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
+      [],
+      [hackney: @hackney_auth]
+    )
+    |> case do
+      %{status_code: 200} -> true
+      _other -> false
+    end
+  end
 
   @doc """
   Get the details for a given email address if present in a Mailchimp audience.
@@ -71,7 +86,7 @@ defmodule PlumaApi.Mailchimp.Repo do
 
   Returns a `{:ok, repsonse_body}` struct if successful, otherwise `{:error, :error_response}`
   """
-  def add_to_audience(subscriber_data, list_id) do
+  def add_to_list(subscriber_data, list_id) do
     HTTPoison.post!(
       @base_url <> "lists/" <> list_id <> "/members",
       subscriber_data,
@@ -136,21 +151,6 @@ defmodule PlumaApi.Mailchimp.Repo do
       [hackney: @hackney_auth]
     )
     |> process_response
-  end
-
-  @doc """
-  Check whether a given email exists in the provided list.
-  """
-  def check_exists(email, list_id) do
-    HTTPoison.get!(
-      @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
-      [],
-      [hackney: @hackney_auth]
-    )
-    |> case do
-      %{status_code: 200} -> true
-      _other -> false
-    end
   end
 
   @doc """

@@ -7,7 +7,9 @@ defmodule PlumaApi.Factory do
       list: list_id, 
       mchimp_id: Nanoid.generate(),
       rid: Nanoid.generate(),
-      parent_rid: "" 
+      parent_rid: "",
+      status: "subscribed",
+      tags: ["Test"]
     }
   end
 

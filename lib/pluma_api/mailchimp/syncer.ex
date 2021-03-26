@@ -24,6 +24,7 @@ defmodule PlumaApi.Mailchimp.Syncer do
       {:ok, local_update}
     end
   end
+  #NOTE: What's happening here is we're unclear on encoding/decoding of rid values. In this case, rid is nil but getting caught.
   def sync_remote_and_local_RIDs(local_sub = %Subscriber{rid: nil}, _external_sub = %{rid: rid}, _list_id) do
     OK.for do
       local_update <- update_local(local_sub, %{ rid: rid })
@@ -51,7 +52,8 @@ defmodule PlumaApi.Mailchimp.Syncer do
   end
   
   defp update_remote(subscriber = %Subscriber{}, updated_fields, list_id) when is_map(updated_fields) do
-    Mailchimp.update_merge_field(subscriber.email, list_id, updated_fields)
+    IO.inspect("Now attempting to update remote #{subscriber.email} with #{Jason.encode!(updated_fields)}")
+    Mailchimp.Repo.update_merge_field(subscriber.email, list_id, updated_fields)
     |> case do
       {:ok, response} -> {:ok, response}
       {:error, error_response} -> {:error, {:remote_update_error, {subscriber, error_response}}}
@@ -59,6 +61,7 @@ defmodule PlumaApi.Mailchimp.Syncer do
   end
 
   defp update_local(subscriber = %Subscriber{}, updated_fields) do
+    IO.inspect("Now attempting to update local #{subscriber.email} with #{Jason.encode!(updated_fields)}")
     Subscriber.insert_changeset(subscriber, updated_fields)
     |> PlumaApi.Repo.update
     |> case do

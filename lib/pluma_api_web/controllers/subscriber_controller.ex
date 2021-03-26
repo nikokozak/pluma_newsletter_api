@@ -69,6 +69,14 @@ defmodule PlumaApiWeb.SubscriberController do
   
   # We consider an existing subscriber error a "pending" error given that we would shortcircuit
   # before if the email was already present in our database, meaning a fully-subscribed user was found.
+  defp handle_error(:add_subscriber, %{"status" => 400, "detail" => detail}) do
+    Logger.warn("Error adding subscriber to MC audience.#{detail}. Likely waiting on confirmation email.")
+    %{status: :error, type: :mc_sub_pending, detail: detail}
+  end
+  defp handle_error(:add_subscriber, %{"status" => status, "detail" => detail}) do
+    Logger.warn("Unkown error adding subscriber to MC audience for reason: #{detail}, with status #{status}")
+    %{status: :error, type: :mc_unknown, detail: detail}
+  end
   defp handle_error(:add_subscriber, {:mc_add_sub_failure, {sub, %{"status" => 400}}}) do
     Logger.warn("Error adding subscriber #{sub.email} to MC audience. Subscriber
       already added, but not present in our local DB, likely waiting on confirmation email.")

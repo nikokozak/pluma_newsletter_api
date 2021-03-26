@@ -18,7 +18,7 @@ defmodule PlumaApi.Mailchimp do
   """
   def add_to_list(subscriber = %Subscriber{}, list_id) do
     Jason.encode!(subscriber)
-    |> MR.add_to_audience(list_id)
+    |> MR.add_to_list(list_id)
   end
   def add_to_list(params, list_id) when is_map(params) do
     case Subscriber.validate_params(params) do
@@ -114,7 +114,7 @@ defmodule PlumaApi.Mailchimp do
 
   defp insert_or_retrieve_subscriber(params = %Subscriber{}) do
     case find_in_db (params) do
-      {:error, :local_not_found} -> insert_subscriber(params)
+      {:error, {:local_not_found, _}} -> insert_subscriber(params)
       {:ok, sub} -> {:ok, sub}
     end
   end
@@ -124,7 +124,7 @@ defmodule PlumaApi.Mailchimp do
     Subscriber.with_email(email)
     |> PlumaApi.Repo.one
     |> case do
-      nil -> {:error, :local_not_found}
+      nil -> {:error, {:local_not_found, email}}
       sub -> {:ok, sub}
     end
   end
@@ -175,6 +175,9 @@ defmodule PlumaApi.Mailchimp do
     if not is_nil(child.parent_rid) and String.length(child.parent_rid) != 0, do: true, else: false
   end
 
+  @doc """
+  
+  """
   def unsubscribe(email) do
     OK.for do
       subscriber <- find_in_db(email)

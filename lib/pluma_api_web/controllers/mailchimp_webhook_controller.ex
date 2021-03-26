@@ -44,7 +44,7 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   end
 
   def handle(conn, params = %{ "type" => "unsubscribe" }) do
-    case Mailchimp.unsubscribe(params["email"]) do
+    case Mailchimp.unsubscribe(params["data"]["email"]) do
       {:ok, _deleted} -> webhook_response(conn, 204)
       {:error, error} -> 
         log_error(error)
@@ -64,6 +64,10 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
     }
   end
 
+  def log_error({:local_not_found, email}) do
+    Logger.warn("Error trying to unsubscribe #{email} from local DB. #{email} not
+      registered locally.")
+  end
   def log_error({:local_insert_failed, {params, chgst}}) do
     Logger.warn("Error trying to insert #{params.email} into local DB. Changeset
       for insertion: #{chgst.errors}")

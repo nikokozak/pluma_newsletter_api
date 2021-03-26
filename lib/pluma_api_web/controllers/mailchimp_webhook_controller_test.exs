@@ -1,6 +1,7 @@
 defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
   alias PlumaApi.Repo
   alias PlumaApi.Subscriber
+  alias PlumaApi.Mailchimp
   use PlumaApiWeb.ConnCase
   use PlumaApi.TestUtils
 
@@ -33,12 +34,15 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
   #be added to our DB and an RID given to our local and remote subscribers.
   @tag test_sub: PlumaApi.Factory.subscriber()
   test "MailchimpWebhookController.handle: subscribe, missing RID", %{ conn: conn, test_sub: test_sub }do
-    {:ok, _resp} = Mailchimp.add_to_audience(%Subscriber{
+    {:ok, _resp} = Mailchimp.add_to_list(%Subscriber{
       email: test_sub.email,
       rid: "",
       parent_rid: "",
-      list: test_sub.list}, 
-    @list_id, "subscribed", true)
+      list: test_sub.list,
+      status: "subscribed",
+      tags: ["Test"]
+    }, 
+    @list_id)
 
     call = make_subscribe_call(test_sub.email, "")
 
@@ -53,7 +57,7 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
     assert not is_nil(subscriber)
     assert String.length(subscriber.rid) > 5 
 
-    {:ok, remote_sub} = Mailchimp.get_subscriber(test_sub.email, @list_id)
+    {:ok, remote_sub} = Mailchimp.Repo.get_subscriber(test_sub.email, @list_id)
 
     assert String.equivalent?(remote_sub["merge_fields"]["RID"], subscriber.rid)
   end
@@ -77,12 +81,14 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
   test "MailchimpWebhookController.handle: subscribe, sub already in DB, different RIDs", %{ conn: conn, test_sub: test_sub }do
     remote_rid = Nanoid.generate()
 
-    {:ok, _resp} = Mailchimp.add_to_audience(%Subscriber{
+    {:ok, _resp} = Mailchimp.add_to_list(%Subscriber{
       email: test_sub.email,
       rid: remote_rid,
       parent_rid: test_sub.parent_rid,
-      list: test_sub.list}, 
-    @list_id, "subscribed", true)
+      list: test_sub.list,
+      status: "subscribed",
+      tags: ["Test"]}, 
+    @list_id)
 
     {:ok, subscriber} = Subscriber.insert_changeset(%Subscriber{}, test_sub)
                  |> Repo.insert
@@ -95,7 +101,7 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
 
     assert json_response(conn, 200)
 
-    {:ok, sub} = Mailchimp.get_subscriber(test_sub.email, @list_id)
+    {:ok, sub} = Mailchimp.Repo.get_subscriber(test_sub.email, @list_id)
 
     assert sub["merge_fields"]["RID"] == subscriber.rid
   end

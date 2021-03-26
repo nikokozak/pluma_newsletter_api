@@ -8,7 +8,7 @@ defmodule PlumaApi.TestUtils do
 
   defmacro __using__([]) do
     quote do
-      alias PlumaApi.Mailchimp
+      alias PlumaApi.Mailchimp.Repo, as: MR
       @behaviour PlumaApi.TestUtils
       @main_list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
 
@@ -29,7 +29,7 @@ defmodule PlumaApi.TestUtils do
       def remove_test_subs_from_mailchimp(%{test_sub: test_sub}) do
         on_exit(fn -> 
           IO.puts("Deleting test email #{test_sub.email} from Mailchimp API")
-          case Mailchimp.delete_subscriber(test_sub.email, @main_list_id) do
+          case MR.delete_subscriber(test_sub.email, @main_list_id) do
             {:ok, _} -> IO.puts("Deleted #{test_sub.email} succesfully")
             {:error, error} -> 
               IO.puts("Could not delete #{test_sub.email}. Status was #{error["status"]}")

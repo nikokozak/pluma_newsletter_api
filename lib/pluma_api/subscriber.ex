@@ -52,11 +52,11 @@ defmodule PlumaApi.Subscriber do
 
     # Virtual fields (used for API calls, etc.)
 
-    field :fname, :string, default: "", virtual: true
-    field :lname, :string, default: "", virtual: true
-    field :status, :string, default: "pending", virtual: true
-    field :tags, {:array, :string}, default: [], virtual: true
-    field :ip_signup, :string, default: "", virtual: true
+    field :fname, :string, default: ""
+    field :lname, :string, default: ""
+    field :status, :string, default: "pending"
+    field :tags, {:array, :string}, default: []
+    field :ip_signup, :string, default: ""
 
   end
 

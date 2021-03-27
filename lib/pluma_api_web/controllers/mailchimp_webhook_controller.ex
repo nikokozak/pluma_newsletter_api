@@ -15,6 +15,30 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
 
   @list_id Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
 
+  defp digest_webhook_params(params) do
+    sub_data = params["data"]
+    merge_fields = sub_data["merges"]
+    status = type_to_status(params["type"])
+    ip = Map.get(sub_data, "ip_signup") || Map.get(sub_data, "ip_opt", "")
+    %{
+      email: sub_data["email"],
+      list: sub_data["list_id"] || @list_id,
+      rid: merge_fields["RID"],
+      parent_rid: merge_fields["PRID"],
+      fname: merge_fields["FNAME"],
+      lname: merge_fields["LNAME"],
+      status: status,
+      ip_signup: ip
+    }
+  end
+
+  defp type_to_status(type) do
+    case type do
+      "subscribe" -> "subscribed"
+      "unsubscribe" -> "unsubscribed"
+    end
+  end
+
   @doc """
   Mailchimp will ping the server to make sure the route provided is correct.
   """
@@ -35,7 +59,7 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   """
   def handle(conn, params = %{ "type" => "subscribe" }) do
     params = digest_webhook_params(params)
-    case Mailchimp.confirm_subscription(params, @list_id) do
+    case Mailchimp.webhook_subscribe(params) do
       {:ok, _sub} -> webhook_response(conn, 200)
       {:error, error} ->
         log_error(error)
@@ -44,7 +68,8 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   end
 
   def handle(conn, params = %{ "type" => "unsubscribe" }) do
-    case Mailchimp.unsubscribe(params["data"]["email"]) do
+    params = digest_webhook_params(params)
+    case Mailchimp.webhook_unsubscribe(params) do
       {:ok, _deleted} -> webhook_response(conn, 204)
       {:error, error} -> 
         log_error(error)
@@ -52,41 +77,21 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
     end
   end
 
-  defp digest_webhook_params(params) do
-    sub_data = params["data"]
-    merge_fields = sub_data["merges"]
-    %{
-        email: sub_data["email"],
-        mchimp_id: sub_data["id"],
-        rid: merge_fields["RID"],
-        parent_rid: merge_fields["PRID"],
-        list: sub_data["list_id"]
-    }
-  end
-
-  def log_error({:local_not_found, email}) do
-    Logger.warn("Error trying to unsubscribe #{email} from local DB. #{email} not
-      registered locally.")
-  end
-  def log_error({:local_insert_failed, {params, chgst}}) do
+  def log_error({:local_insert_error, {params, chgst}}) do
     Logger.warn("Error trying to insert #{params.email} into local DB. Changeset
-      for insertion: #{chgst.errors}")
+      for insertion errors: #{chgst.errors}")
   end
-  def log_error({:remote_update_error, {sub, error_response}}) do
+  def log_error({:local_upsert_error, {sub, chgst}}) do
+    Logger.warn("Error trying to updatsert in local db for subscriber #{sub.email}. Changeset
+      for upsert errors: #{chgst.errors}")
+  end
+  def log_error({:mc_upsert_error, {sub, error_response}}) do
     Logger.warn("Error trying to update Mailchimp subscriber via API for #{sub.email}.
       Error response: #{error_response["title"]}")
   end
-  def log_error({:local_update_error, {sub, chgst}}) do
-    Logger.warn("Error trying to update local db for subscriber #{sub.email}. Changeset
-      for insertion: #{chgst.errors}")
-  end
-  def log_error({:error_tagging_subscriber, {sub, response}}) do
+  def log_error({:mc_error_tagging, {sub, response}}) do
     Logger.warn("Error tagging Mailchimp subscriber #{sub.email}. Response was:
       #{response["title"]}")
-  end
-  def log_error({:local_delete_failed, {sub, chgst}}) do
-    Logger.warn("Error trying to delete a local subscriber #{sub.email}. Changeset 
-      for deletion: #{chgst.errors}")
   end
 
   defp webhook_response(conn, code) do

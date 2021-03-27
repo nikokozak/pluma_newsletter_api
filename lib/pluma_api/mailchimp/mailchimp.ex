@@ -112,7 +112,7 @@ defmodule PlumaApi.Mailchimp do
     |> PlumaApi.Repo.insert
     |> case do
       {:ok, sub} -> {:ok, sub}
-      {:error, chgst} -> {:error, {:local_insert_error, chgst}}
+      {:error, chgst} -> {:error, {:local_insert_error, {params, chgst}}}
     end
   end
 
@@ -127,7 +127,7 @@ defmodule PlumaApi.Mailchimp do
     |> PlumaApi.Repo.insert_or_update
     |> case do
       {:ok, sub} -> {:ok, sub}
-      {:error, chgst} -> {:error, {:local_upsert_error, chgst}}
+      {:error, chgst} -> {:error, {:local_upsert_error, {params, chgst}}}
     end
   end
 
@@ -135,7 +135,7 @@ defmodule PlumaApi.Mailchimp do
     data = Jason.encode!(sub)
     case MR.upsert_member(sub.email, data, sub.list) do
       {:ok, resp} -> {:ok, resp}
-      {:error, resp} -> {:error, {:mc_upsert_error, resp}}
+      {:error, resp} -> {:error, {:mc_upsert_error, {sub, resp}}}
     end
   end
 

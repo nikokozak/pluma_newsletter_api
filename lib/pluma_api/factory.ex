@@ -22,6 +22,7 @@ defmodule PlumaApi.Factory do
       "type" => "subscribe",
       "fired_at" => Date.utc_today,
       "data" => %{
+        "list_id" => getopt(opts, :list) || @main_list,
         "id" => Nanoid.generate(10),
         "email" => email,
         "email_type" => "html",
@@ -38,8 +39,7 @@ defmodule PlumaApi.Factory do
           "RID" => getopt(opts, :rid) || "",
           "PRID" => getopt(opts, :parent_rid) || ""
         }
-      },
-      "list_id" => getopt(opts, :list) || @main_list
+      }
     }
   end
 
@@ -48,6 +48,7 @@ defmodule PlumaApi.Factory do
       "type" => "unsubscribe",
       "fired_at" => Date.utc_today,
       "data" => %{
+        "list_id" => getopt(opts, :list) || @main_list,
         "action" => "unsub",
         "reason" => "manual",
         "id" => Nanoid.generate(10),
@@ -65,11 +66,11 @@ defmodule PlumaApi.Factory do
           "RID" => getopt(opts, :rid) || "",
           "PRID" => getopt(opts, :parent_rid) || ""
         }
-      },
-      "list_id" => getopt(opts, :list) || @main_list
+      }
     }
   end
 
-  defp getopt(opts, key), do: Keyword.get(opts, key)
+  defp getopt(opts, key) when is_list(opts), do: Keyword.get(opts, key)
+  defp getopt(opts, key) when is_map(opts), do: Map.get(opts, key)
 
 end

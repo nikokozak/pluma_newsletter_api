@@ -99,7 +99,7 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   end
 
   defp webhook_response(conn, code) do
-    conn |> put_status(code) |> send_resp
+    conn |> put_status(code) |> json("OK")
   end
   
 end

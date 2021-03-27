@@ -9,7 +9,7 @@ defmodule PlumaApi.Subscriber do
   @foreign_key_type :binary_id
 
   @email_regex ~r/^[^@\s]+@[^@\s]+\.[^@\s]+$/
-  @name_regex ~r/^[\w\s\-]*$/u
+  @name_regex ~r/^[\w\s\-']*$/u
   @rid_regex ~r/^[\w_\-']*$/u
 
   @status_types ["pending", "subscribed", "unsubscribed", "cleaned", "archived"]

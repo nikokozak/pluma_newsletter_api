@@ -42,8 +42,7 @@ defmodule PlumaApiWeb.SubscriberController do
   ## Parameters
   - `conn` - `Plug.Conn.t`
   - `params` - A `map` of subscriber data. Note that this data will be passed into a 
-                `%NewSubscriber{}` struct for validation. The only *required* attribute
-                is a valid-format email.
+               The only *required* attribute is a valid-format email.
 
   ## Returns
   All returns are technically `Plug.Conn.t`, but the status codes and bodies are outlined here
@@ -58,42 +57,57 @@ defmodule PlumaApiWeb.SubscriberController do
   """
   @spec add_subscriber(conn :: Plug.Conn.t, params :: map) :: %Plug.Conn{}
   def add_subscriber(conn, params) do
-    case Mailchimp.subscribe(params, @list_id) do
+    params = digest_add_subscriber_params(params)
+    case Mailchimp.subscribe(params) do
       {:ok, response} ->
-        Logger.info("Successfully subscribed #{response["body"]}")
+        Logger.info("Successfully subscribed #{response["email_address"]}")
         respond(conn, 200, response)
       {:error, error} ->
         respond(conn, 400, handle_error(:add_subscriber, error))
     end
   end
+
+  defp digest_add_subscriber_params(params) do
+    %{
+      email: getopt(params, "email"),
+      fname: getopt(params, "fname"),
+      lname: getopt(params, "lname"),
+      rid: getopt(params, "rid"),
+      parent_rid: getopt(params, "prid"),
+      ip_signup: getopt(params, "ip_signup"),
+      list: Map.get(params, "list") || @list_id,
+      status: "pending"
+    }
+  end
+
+  defp getopt(map, key), do: Map.get(map, key, "")
   
-  # We consider an existing subscriber error a "pending" error given that we would shortcircuit
-  # before if the email was already present in our database, meaning a fully-subscribed user was found.
   defp handle_error(:add_subscriber, %{"status" => 400, "detail" => detail}) do
-    Logger.warn("Error adding subscriber to MC audience.#{detail}. Likely waiting on confirmation email.")
+    Logger.warn("Error adding subscriber to MC audience. \"#{detail}\". Likely waiting on confirmation email.")
     %{status: :error, type: :mc_sub_pending, detail: detail}
   end
   defp handle_error(:add_subscriber, %{"status" => status, "detail" => detail}) do
-    Logger.warn("Unkown error adding subscriber to MC audience for reason: #{detail}, with status #{status}")
+    Logger.warn("Unkown error adding subscriber to MC audience for reason: \"#{detail}\", with status #{status}")
     %{status: :error, type: :mc_unknown, detail: detail}
   end
-  defp handle_error(:add_subscriber, {:mc_add_sub_failure, {sub, %{"status" => 400}}}) do
-    Logger.warn("Error adding subscriber #{sub.email} to MC audience. Subscriber
-      already added, but not present in our local DB, likely waiting on confirmation email.")
-    %{status: :error, type: :mc_sub_pending, detail: sub.email}
+  defp handle_error(:add_subscriber, {:mc_error_tagging, {sub, error_body}}) do
+    Logger.warn("Error tagging parent subscriber \"#{sub.email}\" to MC audience. Error title: #{error_body["title"]}")
+    %{status: :error, type: :mc_tagging, detail: sub.email}
   end
-  defp handle_error(:add_subscriber, {:mc_add_sub_failure, {sub, body}}) do
-    Logger.warn("Error adding subscriber #{sub.email} to MC audience. Received
-      status #{body["status"]} and message \"#{body["title"]}\" from Mailchimp API.")
-    %{status: :error, type: :mc_unknown, detail: body["status"]}
+  defp handle_error(:add_subscriber, {:mc_upsert_error, {sub, error_body}}) do
+    Logger.warn("Error upserting subscriber \"#{sub.email}\" to MC audience. Error title: #{error_body["title"]}")
+    %{status: :error, type: :mc_upsert, detail: sub.email}
   end
-  defp handle_error(:add_subscriber, {:local_email_found, sub}) do
-    Logger.warn("Error adding new subscriber #{sub.email} to our DB, email already
-      in DB.")
+  defp handle_error(:add_subscriber, {:local_sub_found, sub}) do
+    Logger.warn("Error adding new subscriber \"#{sub.email}\" to our DB, already subscribed.")
     %{status: :error, type: :email_exists, detail: sub.email}
   end
-  defp handle_error(:add_subscriber, {:validation, chgst = %Ecto.Changeset{}}) do
-    Logger.warn("There was an error validating the following fields: #{Jason.encode!(Keyword.keys(chgst.errors))} for new sub #{chgst.changes.email}")
+  defp handle_error(:add_subscriber, {:local_pending_sub_found, sub}) do
+    Logger.warn("Error adding new subscriber \"#{sub.email}\" to our DB, pending email already in DB.")
+    %{status: :error, type: :pending_email_exists, detail: sub.email}
+  end
+  defp handle_error(:add_subscriber, {:local_insert_error, {params, chgst = %Ecto.Changeset{}}}) do
+    Logger.warn("There was an error inserting new sub \"#{params.email}\" with the following errors: #{Jason.encode!(Keyword.keys(chgst.errors))}")
     %{status: :error, type: :validation, detail: Keyword.keys(chgst.errors)}
   end
 

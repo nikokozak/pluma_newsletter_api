@@ -37,8 +37,13 @@ defmodule PlumaApi.Mailchimp do
   **Returns:**
   - `{:ok, Jason.decode!(mailchimp_response_body)}`
   - `{:error, Jason.decode!(mailchimp_response_body)}`
-  - `{:error, {:local_email_found, %Subscriber{}}}`
-  - `{:error, {:validation, incorrect_changeset}}`
+  - `{:error, {:local_pending_sub_found, sub}}`
+  - `{:error, {:local_sub_found, %Subscriber{}}}`
+  - `{:error, {:local_insert_error, {params, chgst}}}`
+  - `{:error, {:mc_upsert_error, {sub, resp}}}` on error upserting the remote record with the 
+    new `Subscriber` details.
+  - `{:error, {:mc_error_tagging, {subscriber, response}}}` on error tagging the parent
+    when VIP status achieved.
   """
   def subscribe(%{email: email} = params) do
     OK.for do
@@ -62,8 +67,8 @@ defmodule PlumaApi.Mailchimp do
 
   **Returns:**
   - `{:ok, mailchimp_response_body}` on success.
-  - `{:error, {:local_upsert_error, chgst}}` on error updating the local `Subscriber`.
-  - `{:error, {:mc_upsert_error, resp}}` on error upserting the remote record with the 
+  - `{:error, {:local_upsert_error, {sub, chgst}}}` on error updating the local `Subscriber`.
+  - `{:error, {:mc_upsert_error, {sub, resp}}}` on error upserting the remote record with the 
     new `Subscriber` details.
   - `{:error, {:mc_error_tagging, {subscriber, response}}}` on error tagging the parent
     when VIP status achieved.
@@ -103,6 +108,7 @@ defmodule PlumaApi.Mailchimp do
     |> PlumaApi.Repo.one
     |> case do
       nil -> {:ok, :not_found}
+      %Subscriber{status: "pending"} = sub -> {:error, {:local_pending_sub_found, sub}}
       sub -> {:error, {:local_sub_found, sub}}
     end
   end

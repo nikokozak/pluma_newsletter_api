@@ -60,7 +60,9 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   def handle(conn, params = %{ "type" => "subscribe" }) do
     params = digest_webhook_params(params)
     case Mailchimp.webhook_subscribe(params) do
-      {:ok, _sub} -> webhook_response(conn, 200)
+      {:ok, _sub} -> 
+        Logger.info("Subscribe webhook for #{params.email} processed succesfully.")
+        webhook_response(conn, 200)
       {:error, error} ->
         log_error(error)
         webhook_response(conn, 202)
@@ -70,7 +72,9 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   def handle(conn, params = %{ "type" => "unsubscribe" }) do
     params = digest_webhook_params(params)
     case Mailchimp.webhook_unsubscribe(params) do
-      {:ok, _deleted} -> webhook_response(conn, 204)
+      {:ok, _deleted} -> 
+        Logger.info("Unsubscribe webhook for #{params.email} processed succesfully.")
+        webhook_response(conn, 204)
       {:error, error} -> 
         log_error(error)
         webhook_response(conn, 202)
@@ -78,19 +82,19 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
   end
 
   def log_error({:local_insert_error, {params, chgst}}) do
-    Logger.warn("Error trying to insert #{params.email} into local DB. Changeset
+    Logger.warn("Webhook: Error trying to insert #{params.email} into local DB. Changeset
       for insertion errors: #{chgst.errors}")
   end
   def log_error({:local_upsert_error, {sub, chgst}}) do
-    Logger.warn("Error trying to updatsert in local db for subscriber #{sub.email}. Changeset
+    Logger.warn("Webhook: Error trying to updatsert in local db for subscriber #{sub.email}. Changeset
       for upsert errors: #{chgst.errors}")
   end
   def log_error({:mc_upsert_error, {sub, error_response}}) do
-    Logger.warn("Error trying to update Mailchimp subscriber via API for #{sub.email}.
+    Logger.warn("Webhook: Error trying to update Mailchimp subscriber via API for #{sub.email}.
       Error response: #{error_response["title"]}")
   end
   def log_error({:mc_error_tagging, {sub, response}}) do
-    Logger.warn("Error tagging Mailchimp subscriber #{sub.email}. Response was:
+    Logger.warn("Webhook: Error tagging Mailchimp subscriber #{sub.email}. Response was:
       #{response["title"]}")
   end
 

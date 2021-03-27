@@ -20,7 +20,7 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
     {:ok, sub} = Subscriber.changeset(%Subscriber{}, test_sub)
                  |> Repo.insert
 
-    {:ok, response} = Mailchimp.add_to_list(%{ sub | status: "subscribed" })
+    {:ok, _response} = Mailchimp.add_to_list(%{ sub | status: "subscribed" })
 
     call = PlumaApi.Factory.subscribe_webhook(test_sub.email, test_sub)
 
@@ -79,33 +79,6 @@ defmodule PlumaApiWeb.MailchimpWebhookControllerTest do
       |> Repo.one
 
     assert String.equivalent?(subscriber.status, "unsubscribed")
-  end
-
-  defp make_unsubscribe_call(email, rid, parent_rid \\ "") do
-    %{
-      "type" => "unsubscribe",
-      "fired_at" => Date.utc_today,
-      "data" => %{
-        "action" => "unsub",
-        "reason" => "manual",
-        "id" => Nanoid.generate(10),
-        "email" => email,
-        "email_type" => "html",
-        "ip_opt" => Faker.Internet.ip_v4_address(),
-        "web_id" => Nanoid.generate(10),
-        "merges" => %{
-          "EMAIL" => email,
-          "FNAME" => Faker.Person.first_name(),
-          "LNAME" => Faker.Person.last_name(),
-          "ADDRESS" => "",
-          "PHONE" => "",
-          "BIRTHDAY" => "",
-          "RID" => rid,
-          "PRID" => parent_rid
-        }
-      },
-      "list_id" => "4cc41938a8"
-    }
   end
 
 end

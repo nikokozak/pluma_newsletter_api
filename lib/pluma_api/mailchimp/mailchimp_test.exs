@@ -50,7 +50,33 @@ defmodule PlumaApi.MailchimpTest do
       assert String.equivalent?(sub.email, local.email)
     end
 
-    ##TODO: Add batch test_sub tag support in order to test VIP tagging.
+    @tag test_sub: [
+      parent: PlumaApi.Factory.subscriber(status: "subscribed"),
+      child_1: PlumaApi.Factory.subscriber(status: "subscribed"),
+      child_2: PlumaApi.Factory.subscriber(status: "subscribed"),
+      child_3: PlumaApi.Factory.subscriber(status: "subscribed")
+    ]
+    test "Tags parent as VIP on hitting 3 subs", %{test_sub: test_sub} do
+      [parent: parent, child_1: child_1, child_2: child_2, child_3: child_3] = test_sub
+
+      {:ok, _response} = Mailchimp.subscribe(parent)
+      Process.sleep(100)
+      {:ok, _response} = Mailchimp.subscribe(%{ child_1 | parent_rid: parent.rid })
+      Process.sleep(100)
+      {:ok, _response} = Mailchimp.subscribe(%{ child_2 | parent_rid: parent.rid })
+      Process.sleep(100)
+
+      # Check we're not tagged
+      {:ok, remote_parent} = Mailchimp.Repo.get_subscriber(parent.email, parent.list)
+      assert length(remote_parent["tags"]) == 1 # "Test" tag included by default
+      Process.sleep(100)
+
+      {:ok, _reponse} = Mailchimp.subscribe(%{ child_3 | parent_rid: parent.rid })
+      Process.sleep(100)
+
+      {:ok, remote_parent} = Mailchimp.Repo.get_subscriber(parent.email, parent.list)
+      assert [%{"id" => _, "name" => "VIP"}, _] = remote_parent["tags"]
+    end
 
   end
 

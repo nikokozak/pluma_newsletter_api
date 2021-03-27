@@ -1,4 +1,5 @@
 defmodule PlumaApi.TestUtils do
+  alias PlumaApi.Mailchimp.Repo, as: MR
   @moduledoc """
   Utilities for testing.
   """
@@ -26,19 +27,33 @@ defmodule PlumaApi.TestUtils do
 
       TODO: Create a version that accomodates multiple subscribers.
       """
-      def remove_test_subs_from_mailchimp(%{test_sub: test_sub}) do
+      def remove_test_subs_from_mailchimp(%{test_sub: test_sub}) when is_map(test_sub) do
         on_exit(fn -> 
-          IO.puts("Deleting test email #{test_sub.email} from Mailchimp API")
-          case MR.delete_subscriber(test_sub.email, @main_list_id) do
-            {:ok, _} -> IO.puts("Deleted #{test_sub.email} succesfully")
-            {:error, error} -> 
-              IO.puts("Could not delete #{test_sub.email}. Status was #{error["status"]}")
-          end
+          Process.sleep(250)
+          PlumaApi.TestUtils.remove_test_sub(test_sub)
+        end)
+      end
+      def remove_test_subs_from_mailchimp(%{test_sub: test_subs}) when is_list(test_subs) do
+        subs = Keyword.values(test_subs)
+        on_exit(fn -> 
+          Enum.each(subs, fn sub ->
+            Process.sleep(250)
+            PlumaApi.TestUtils.remove_test_sub(sub)
+          end)
         end)
       end
       def remove_test_subs_from_mailchimp(_context), do: :ok
 
       defoverridable remove_test_subs_from_mailchimp: 1
+    end
+  end
+
+  def remove_test_sub(sub) do
+    IO.puts("Deleting test email #{sub.email} from Mailchimp API")
+    case MR.delete_subscriber(sub.email, sub.list) do
+      {:ok, _} -> IO.puts("Deleted #{sub.email} succesfully")
+      {:error, error} -> 
+        IO.puts("Could not delete #{sub.email}. Status was #{error["status"]}")
     end
   end
 

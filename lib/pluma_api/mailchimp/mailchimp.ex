@@ -169,7 +169,8 @@ defmodule PlumaApi.Mailchimp do
 
   defp maybe_award_vip(subscriber = %Subscriber{}, list_id) do
     subscriber = PlumaApi.Repo.preload(subscriber, :referees)
-    if length(subscriber.referees) == 3 do
+    confirmed_referees = filter_confirmed(subscriber.referees)
+    if length(confirmed_referees) == 3 do
       case MR.tag_subscriber(subscriber.email, list_id, [%{ name: "VIP", status: "active" }]) do
         {:ok, _response} -> {:ok, subscriber}
         {:error, response} -> {:error, {:mc_error_tagging, {subscriber, response}}}
@@ -177,6 +178,12 @@ defmodule PlumaApi.Mailchimp do
     else
       {:ok, :vip_not_granted}
     end
+  end
+
+  defp filter_confirmed(referees) do
+    Enum.filter(referees, fn referee ->
+      String.equivalent?(referee.status, "subscribed")
+    end)
   end
 
   defp has_parent_rid(child) do

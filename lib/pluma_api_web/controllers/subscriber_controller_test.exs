@@ -65,7 +65,7 @@ defmodule PlumaApiWeb.SubscriberControllerTest do
 
     test "returns an error along with subscriber details if a pending sub already exists", %{conn: conn} do
       test_sub = PlumaApi.Factory.subscriber(status: "pending")
-      {:ok, pending_sub} = Subscriber.changeset(%Subscriber{}, test_sub) 
+      {:ok, _pending_sub} = Subscriber.changeset(%Subscriber{}, test_sub) 
                            |> Repo.insert
 
       conn_pending = post(conn, Routes.subscriber_path(conn, :add_subscriber), make_new_subscriber_call(test_sub))
@@ -78,7 +78,7 @@ defmodule PlumaApiWeb.SubscriberControllerTest do
 
     @tag test_sub: PlumaApi.Factory.subscriber(status: "subscribed")
     test "returns an error along with subscriber details if subscribed sub already exists", %{conn: conn, test_sub: test_sub} do
-      {:ok, sub} = Subscriber.changeset(%Subscriber{}, test_sub)
+      {:ok, _sub} = Subscriber.changeset(%Subscriber{}, test_sub)
                    |> Repo.insert
       conn_existing = post(conn, Routes.subscriber_path(conn, :add_subscriber), make_new_subscriber_call(test_sub))
 

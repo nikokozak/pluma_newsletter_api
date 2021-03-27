@@ -22,7 +22,7 @@ defmodule PlumaApi.SubscriberTest do
     {:ok, sub_1: sub_1, sub_2: sub_2, sub_3: sub_3}
   end
 
-  test "insert_changeset/2" do
+  test "changeset/2" do
     changeset = 
       %Subscriber{}
       |> Subscriber.changeset(Factory.subscriber)

@@ -1,5 +1,5 @@
 defmodule PlumaApi.Factory do
-  @main_list Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list)
+  @main_list Keyword.get(Application.get_env(:pluma_api, :mailchimp), :main_list_id)
 
   def subscriber(opts \\ []) do
     %{

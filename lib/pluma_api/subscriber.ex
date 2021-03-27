@@ -2,7 +2,6 @@ defmodule PlumaApi.Subscriber do
   use Ecto.Schema
   import Ecto.Changeset
   import Ecto.Query, only: [from: 2]
-  alias __MODULE__
 
   @default_list Keyword.get(Application.get_env(:pluma_api, :mailchimp), :default_list)
 
@@ -11,9 +10,9 @@ defmodule PlumaApi.Subscriber do
 
   @email_regex ~r/^[^@\s]+@[^@\s]+\.[^@\s]+$/
   @name_regex ~r/^[\w\s\-]*$/u
-  @rid_regex ~r/^[\w_\-']*$/
+  @rid_regex ~r/^[\w_\-']*$/u
 
-  #@derive {Jason.Encoder, only: [:mchimp_id, :email, :list, :rid, :parent_rid]}
+  @status_types ["pending", "subscribed", "unsubscribed", "cleaned", "archived"]
 
   # spares us having to define separate functions throughout our controllers
   # to encode our fields back into JSON.
@@ -31,7 +30,7 @@ defmodule PlumaApi.Subscriber do
           RID: sub.rid,
           PRID: sub.parent_rid
         },
-        ip_signup: sub.ip_signup
+        ip_signup: sub.ip_signup,
       }, opts)
 
       end
@@ -44,7 +43,7 @@ defmodule PlumaApi.Subscriber do
     field :email, :string, null: false
     field :list, :string, default: @default_list
 
-    field :rid, :string, default: ""
+    field :rid, :string, default: Nanoid.generate() 
     field :parent_rid, :string, default: ""
 
     has_many :referees, __MODULE__, foreign_key: :parent_rid, references: :rid
@@ -62,29 +61,21 @@ defmodule PlumaApi.Subscriber do
   end
 
   def changeset(subscriber, params) do
-    allowed_params = [:mchimp_id, :email, :list, :rid, :parent_rid, :fname, :lname, :status, :tags, :ip_signup]
+    fields = 
+      [:mchimp_id,
+        :email,
+        :list,
+        :rid,
+        :parent_rid,
+        :fname,
+        :lname,
+        :status,
+        :tags,
+        :ip_signup,
+        :country]
 
     Ecto.Changeset.change(subscriber)
-    |> changeset_with_allowed_params(allowed_params, params)
-  end
-
-  def call_changeset(subscriber, params) do
-    allowed_params = [:fname, :lname, :email, :rid, :parent_rid, :ip_signup, :tags, :status]
-
-    Ecto.Changeset.change(subscriber)
-    |> changeset_with_allowed_params(allowed_params, params)
-  end
-
-  def insert_changeset(subscriber, params) do
-    allowed_params = [:mchimp_id, :email, :list, :rid, :parent_rid]
-
-    Ecto.Changeset.change(subscriber)
-    |> changeset_with_allowed_params(allowed_params, params)
-  end
-
-  defp changeset_with_allowed_params(subscriber, allowed_params, params \\ %{}) do
-    subscriber
-    |> cast(params, allowed_params)
+    |> cast(params, fields)
     |> validate_required([:email])
     |> unique_constraint(:email)
     |> validate_format(:email, @email_regex)
@@ -92,18 +83,7 @@ defmodule PlumaApi.Subscriber do
     |> validate_format(:lname, @name_regex)
     |> validate_format(:rid, @rid_regex)
     |> validate_format(:parent_rid, @rid_regex)
-    |> validate_inclusion(:status, ["pending", "subscribed"])
-  end
-
-  def validate_params(params) do
-    chgst = %Subscriber{}
-            |> call_changeset(params)
-
-    if chgst.valid? do
-      {:ok, apply_changes(chgst)}
-    else
-      {:error, {:validation, chgst}}
-    end
+    |> validate_inclusion(:status, @status_types)
   end
 
   def with_id(query \\ __MODULE__, id), do: from s in query, where: ^id == s.id 

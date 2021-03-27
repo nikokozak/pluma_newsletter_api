@@ -3,18 +3,20 @@ defmodule PlumaApi.SubscriberTest do
   alias PlumaApi.Factory
   alias PlumaApi.Subscriber
 
+  @moduletag :subscriber_tests
+
   setup do
     
     {:ok, sub_1} = %Subscriber{}
-                   |> Subscriber.insert_changeset(Factory.subscriber)
+                   |> Subscriber.changeset(Factory.subscriber)
                    |> Repo.insert
 
     {:ok, sub_2} = %Subscriber{}
-                   |> Subscriber.insert_changeset(%{ Factory.subscriber | parent_rid: sub_1.rid})
+                   |> Subscriber.changeset(Factory.subscriber(parent_rid: sub_1.rid))
                    |> Repo.insert
 
     {:ok, sub_3} = %Subscriber{}
-                   |> Subscriber.insert_changeset(%{ Factory.subscriber | parent_rid: sub_1.rid })
+                   |> Subscriber.changeset(Factory.subscriber(parent_rid: sub_1.rid))
                    |> Repo.insert
 
     {:ok, sub_1: sub_1, sub_2: sub_2, sub_3: sub_3}
@@ -23,14 +25,14 @@ defmodule PlumaApi.SubscriberTest do
   test "insert_changeset/2" do
     changeset = 
       %Subscriber{}
-      |> Subscriber.insert_changeset(Factory.subscriber)
+      |> Subscriber.changeset(Factory.subscriber)
 
     assert changeset.valid?
   end
 
   test "persist" do
     subscriber = %Subscriber{}
-                 |> Subscriber.insert_changeset(Factory.subscriber())
+                 |> Subscriber.changeset(Factory.subscriber())
     
     {:ok, _inserted} = Repo.insert(subscriber)
   end
@@ -55,6 +57,11 @@ defmodule PlumaApi.SubscriberTest do
     assert length(sub_1.referees) == 2
   end
 
+  test "generates new rid on blank string" do
+    {:ok, sub} = Subscriber.changeset(%Subscriber{}, Factory.subscriber(rid: ""))
+                   |> Ecto.Changeset.apply_action(:insert)
 
+    assert not String.equivalent?("", sub.rid)
+  end
 
 end

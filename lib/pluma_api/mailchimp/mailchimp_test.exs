@@ -14,116 +14,115 @@ defmodule PlumaApi.MailchimpTest do
   # The subscriber is then deleted via the `on_exit/2` callback
   # This mechanism is handled by the Pluma.TestUtils macro
 
-  describe "Mailchimp.add_to_list/2" do
+  describe "Mailchimp.subscribe/1" do
 
-    @tag test_sub: PlumaApi.Factory.subscriber()
-    test "Adds a subscriber to a Mailchimp list", %{test_sub: test_sub} do
-      {:ok, result} = Mailchimp.add_to_list(test_sub, @main_list_id)
+    @tag test_sub: PlumaApi.Factory.subscriber(list: @main_list_id, status: "pending")
+    test "Adds a subscriber to a Mailchimp list and the local DB", %{test_sub: test_sub} do
+      {:ok, result} = Mailchimp.subscribe(test_sub, @main_list_id)
+      merge_fields = result["merge_fields"]
 
-      email = test_sub.email
-      assert %{"email_address" => ^email} = result
-    end
+      local_sub = Subscriber.with_email(test_sub.email) |> Repo.one
 
-    @tag test_sub: PlumaApi.Factory.subscriber()
-    test "Returns an error if subscriber already present in Mailchimp list", %{test_sub: test_sub} do
-      {:ok, result} = Mailchimp.add_to_list(test_sub, @main_list_id)
-
-      email = test_sub.email
-      assert %{"email_address" => ^email} = result
-
-      {:error, result} = Mailchimp.add_to_list(test_sub, @main_list_id)
-
-      assert %{"status" => 400} = result
-    end
-
-    test "Returns a validation error if parameters are incorrect" do
-      sub = %{ PlumaApi.Factory.subscriber() | email: "not_an_email" }
-      {:error, {:validation, _error}} = Mailchimp.add_to_list(sub, @main_list_id)
-
-      sub = %{ PlumaApi.Factory.subscriber() | status: "not_a_status" }
-      {:error, {:validation, _error}} = Mailchimp.add_to_list(sub, @main_list_id)
-
-      sub = %{ PlumaApi.Factory.subscriber() | email: "" }
-      {:error, {:validation, _error}} = Mailchimp.add_to_list(sub, @main_list_id)
-    end
-
-  end
-
-  describe "Mailchimp.subscribe/2" do
-
-    @tag test_sub: PlumaApi.Factory.subscriber()
-    test "Adds a subscriber to a Mailchimp list", %{test_sub: test_sub} do
-      {:ok, _result} = Mailchimp.subscribe(test_sub, @main_list_id)
+      refute is_nil(local_sub)
+      assert String.equivalent?(result["status"], local_sub.status)
+      assert String.equivalent?(merge_fields["RID"], local_sub.rid)
       
       assert Mailchimp.Repo.check_exists(test_sub.email, @main_list_id)
     end
 
     test "Returns error if validation fails" do
-      sub = %{ PlumaApi.Factory.subscriber() | email: "not_an_email" }
+      sub = PlumaApi.Factory.subscriber(email: "notanemail")
       {:error, {:validation, _error}} = Mailchimp.subscribe(sub, @main_list_id)
 
-      sub = %{ PlumaApi.Factory.subscriber() | status: "not_a_status" }
+      sub = PlumaApi.Factory.subscriber(email: "")
       {:error, {:validation, _error}} = Mailchimp.add_to_list(sub, @main_list_id)
 
-      sub = %{ PlumaApi.Factory.subscriber() | email: "" }
+      sub = PlumaApi.Factory.subscriber(status: "not_a_status") 
       {:error, {:validation, _error}} = Mailchimp.add_to_list(sub, @main_list_id)
     end
 
-    @tag test_sub: PlumaApi.Factory.subscriber()
-    test "Returns error if subscriber present in local DB", %{test_sub: test_sub} do
-      {:ok, sub} = Subscriber.insert_changeset(%Subscriber{}, test_sub)
+    test "Returns error if subscriber present in local DB" do
+      test_sub = PlumaApi.Factory.subscriber()
+      {:ok, sub} = Subscriber.changeset(%Subscriber{}, test_sub)
                    |> Repo.insert
 
       {:error, {:local_email_found, local}} = Mailchimp.subscribe(test_sub, @main_list_id)
       assert String.equivalent?(sub.email, local.email)
     end
 
-    @tag test_sub: PlumaApi.Factory.subscriber()
-    test "Creates new RID if collision with local RID exists", %{test_sub: test_sub} do
-      rid = Nanoid.generate()
-      {:ok, sub} = Subscriber.insert_changeset(%Subscriber{}, %{email: "atest@gmail.com", rid: rid})
-                   |> Repo.insert
+    ##TODO: Add batch test_sub tag support in order to test VIP tagging.
 
-      {:ok, response} = Mailchimp.subscribe(%{ test_sub | rid: rid }, @main_list_id)
-      refute String.equivalent?(sub.rid, response["merge_fields"]["RID"])
+  end
+
+  describe "Mailchimp.webhook_subscribe/1" do
+
+    @tag test_sub: PlumaApi.Factory.subscriber(rid: "", status: "subscribed")
+    test "Adds a local subscriber", %{test_sub: test_sub} do
+      {:ok, mc_result} = Mailchimp.add_to_list(test_sub)
+
+      {:ok, response} = Mailchimp.webhook_subscribe(test_sub)
+      merge_fields = response["merge_fields"]
+
+      local_sub = Subscriber.with_email(test_sub.email) |> Repo.one
+      refute is_nil(local_sub)
+      assert String.length(local_sub.rid) > 4
+
+      assert String.equivalent?(merge_fields["RID"], local_sub.rid)
+      assert String.equivalent?(merge_fields["FNAME"], local_sub.fname)
+      assert String.equivalent?(response["status"], local_sub.status)
+    end
+
+    @tag test_sub: PlumaApi.Factory.subscriber(status: "subscribed")
+    test "Updates a local subscriber", %{test_sub: test_sub} do
+      {:ok, mc_result} = Mailchimp.add_to_list(test_sub)
+
+      {:ok, local_sub} = Subscriber.changeset(%Subscriber{}, %{ test_sub | status: "pending" })
+                         |> PlumaApi.Repo.insert
+
+      {:ok, response} = Mailchimp.webhook_subscribe(test_sub)
+      merge_fields = response["merge_fields"]
+
+      assert String.equivalent?(merge_fields["RID"], local_sub.rid)
+      assert String.equivalent?(response["status"], "subscribed")
+      assert String.equivalent?(response["status"], local_sub.status)
+    end
+
+    test "Returns upsert error if params are wrong" do
+      sub = PlumaApi.Factory.subscriber(email: "not_an_email")
+      {:error, {:local_upsert_error, _error}} = Mailchimp.webhook_subscribe(sub)
+
+      sub = PlumaApi.Factory.subscriber(status: "not_a_status")
+      {:error, {:local_upsert_error, _error}} = Mailchimp.webhook_subscribe(sub)
+
+      sub = PlumaApi.Factory.subscriber(email: "")
+      {:error, {:local_upsert_error, _error}} = Mailchimp.webhook_subscribe(sub)
     end
 
   end
 
-  describe "Mailchimp.confirm_subscription/2" do
+  describe "Mailchimp.webhook_unsubscribe/1" do
 
-    @tag test_sub: PlumaApi.Factory.subscriber()
-    test "Adds a local subscriber", %{test_sub: test_sub} do
-      {:ok, mc_result} = Mailchimp.add_to_list(test_sub, @main_list_id)
+    test "Updates local status to 'unsubscribed'" do
+      test_sub = PlumaApi.Factory.subscriber(status: "subscribed")
+      {:ok, local_sub} = Subscriber.changeset(%Subscriber{}, test_sub)
+                         |> PlumaApi.Repo.insert
 
-      {:ok, local_result} = Mailchimp.confirm_subscription(test_sub, @main_list_id)
+      {:ok, _} = Mailchimp.webhook_unsubcribe(%{ test_sub | status: "unsubscribed" })
 
-      assert String.equivalent?(local_result.email, test_sub.email)
-      assert String.equivalent?(local_result.rid, mc_result["merge_fields"]["RID"])
+      local_sub = Subscriber.with_email(test_sub.email) |> Repo.one
+      refute is_nil(local_sub)
+      assert String.equivalent?(local_sub.status, "unsubscribed")
     end
 
-    @tag test_sub: PlumaApi.Factory.subscriber()
-    test "Syncs RID's with bias to local RID", %{test_sub: test_sub} do
-      remote_rid = Nanoid.generate()
-      local_rid = Nanoid.generate()
+    test "Returns upsert error if params are wrong" do
+      sub = PlumaApi.Factory.subscriber(email: "not_an_email")
+      {:error, {:local_upsert_error, _error}} = Mailchimp.webhook_unsubscribe(sub)
 
-      {:ok, mc_result} = Mailchimp.add_to_list(%{ test_sub | rid: remote_rid }, @main_list_id)
+      sub = PlumaApi.Factory.subscriber(status: "not_a_status")
+      {:error, {:local_upsert_error, _error}} = Mailchimp.webhook_unsubscribe(sub)
 
-      {:ok, local_result} = Mailchimp.confirm_subscription(%{ test_sub | rid: local_rid }, @main_list_id)
-
-      assert String.equivalent?(local_result.email, test_sub.email)
-      assert String.equivalent?(local_result.rid, mc_result["merge_fields"]["RID"])
-    end
-
-    test "Returns validation error if params are wrong" do
-      sub = %{ PlumaApi.Factory.subscriber() | email: "not_an_email" }
-      {:error, {:validation, _error}} = Mailchimp.confirm_subscription(sub, @main_list_id)
-
-      sub = %{ PlumaApi.Factory.subscriber() | status: "not_a_status" }
-      {:error, {:validation, _error}} = Mailchimp.confirm_subscription(sub, @main_list_id)
-
-      sub = %{ PlumaApi.Factory.subscriber() | email: "" }
-      {:error, {:validation, _error}} = Mailchimp.confirm_subscription(sub, @main_list_id)
+      sub = PlumaApi.Factory.subscriber(email: "")
+      {:error, {:local_upsert_error, _error}} = Mailchimp.webhook_unsubscribe(sub)
     end
 
   end

@@ -29,7 +29,6 @@ defmodule PlumaApi.Mailchimp.Repo do
   @spec get_subscriber(email :: String.t, list_id :: String.t) :: success_response | error_response
   @spec add_to_list(subscriber_data :: binary, list_id :: String.t) :: success_response | error_response
   @spec tag_subscriber(email :: String.t, list_id :: String.t, tags :: list(%{name: String.t, status: String.t})) :: success_response | error_response
-  @spec create_merge_field(list_id :: String.t, field_name :: String.t, field_type :: String.t) :: success_response | error_response
   @spec update_merge_field(email :: String.t, list_id :: String.t, merge_fields :: map) :: success_response | error_response
   @spec check_exists(email :: String.t, list_id :: String.t) :: boolean
   @spec archive_subscriber(email :: String.t, list_id :: String.t) :: success_response | error_response
@@ -97,6 +96,27 @@ defmodule PlumaApi.Mailchimp.Repo do
   end
 
   @doc """
+  Adds to or updates a member in the given Mailchimp list. 
+
+  **Note**: As part of the `subscriber_data` provided, a `status_if_new` must be included,
+  and must be one of `"subscribed", "unsubscribed", "pending", "archived", or "transactional"`.
+
+  Please refer to the Mailchimp API Docs for allowed fields. *Note that `tags` cannot be passed*
+  https://mailchimp.com/developer/marketing/api/list-members/add-or-update-list-member/
+
+  Returns a `{:ok, reponse_body}` | `{:error, error_response}`.
+  """
+  def upsert_member(email, subscriber_data, list_id) do
+    HTTPoison.put!(
+      @base_url <> "lists/" <> list_id <> "/members/" <> hashify_email(email),
+      subscriber_data,
+      [],
+      [hackney: @hackney_auth]
+    )
+    |> process_response
+  end
+
+  @doc """
   Adds tags to a given subscriber in a Mailchimp audience. Tags are passed as a list of
   `maps`, eg: `[%{ name: "VIP", status: "active" }]`
 
@@ -110,30 +130,6 @@ defmodule PlumaApi.Mailchimp.Repo do
       [hackney: @hackney_auth]
     )
     |> process_response(204)
-  end
-
-  @doc """
-  Creates a new Merge Field for subscribers in a list. By default the new merge field
-  is not public and is not a required field.
-
-  Returns a `HTTPoison.Response{status_code: 200}` if successful.
-
-  Of interest is the `merge_id` value returned by Mailchimp on success, which is 
-  required if we want to update the merge field itself in the future.
-  """
-  def create_merge_field(list_id, field_name, field_type) do
-    HTTPoison.post!(
-      @base_url <> "lists/" <> list_id <> "/merge-fields",
-      Jason.encode(%{ 
-        name: field_name,
-        type: field_type,
-        required: false,
-        public: false
-      }),
-      [],
-      [hackney: @hackney_auth]
-    )
-    |> process_response
   end
 
   @doc """

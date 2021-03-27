@@ -48,23 +48,37 @@ defmodule PlumaApi.Repo do
   end
 
   @doc """
+  Upserts subscribers based on a CSV export of a Mailchimp Audience.
+
+  The Mailchimp Audience MUST have the following headers:
+  - `"Correo"`
+  - `"Nombre"`
+  - `"Apellido"`
+  - `"OPTIN_IP" & "CONFIRM_IP"`
+  - `"TAGS"`
+  - `"RID"`
+  - `"ParentRID"`
+  - `"CC"`
+
   **Parameters**
   - `file`: relative path from application root to CSV file.
+  - `status`: one of `"subscribed", "archived", "cleaned"`.
+  - `list_id`: the list to which the csv subscribers belong.
   """
-  def upsert_from_CSV(file, status) when status in ["subscribed", "archived", "cleaned"] do
+  def upsert_from_CSV(file, status, list_id) when status in ["subscribed", "unsubscribed", "cleaned"] do
     read_from_csv(file)
-    |> Stream.each(&upsert_csv_row(&1, status))
+    |> Stream.each(&upsert_csv_row(&1, status, list_id))
     |> Stream.run
   end
 
-  def upsert_csv_row(row, status) do
+  def upsert_csv_row(row, status, list_id) do
     Subscriber.with_email(row["Correo"])
     |> PlumaApi.Repo.one
     |> case do
       nil -> %Subscriber{}
       found -> found
     end
-    |> Subscriber.changeset(csv_to_sub_params(row, status))
+    |> Subscriber.changeset(csv_to_sub_params(row, status, list_id))
     |> PlumaApi.Repo.insert_or_update
     |> case do
       {:ok, sub} -> IO.inspect("Updated or inserted #{sub.email}")
@@ -72,7 +86,7 @@ defmodule PlumaApi.Repo do
     end
   end
 
-  def csv_to_sub_params(row, status) do
+  def csv_to_sub_params(row, status, list_id) do
       %{
         email: row["Correo"],
         fname: row["Nombre"],
@@ -83,7 +97,8 @@ defmodule PlumaApi.Repo do
         mchimp_id: hashify_email(row["Correo"]),
         rid: row["RID"],
         parent_rid: row["ParentRID"],
-        country: row["CC"]
+        country: row["CC"],
+        list: list_id
       }
   end
 
@@ -107,4 +122,5 @@ defmodule PlumaApi.Repo do
       do: a,
     else: b
   end
+
 end

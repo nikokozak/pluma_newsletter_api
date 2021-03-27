@@ -16,17 +16,11 @@ defmodule PlumaApi.Mailchimp do
 
   Returns `{:ok, body}` or `{:error, error_body}`
   """
+  def add_to_list(subscriber = %Subscriber{}), do: add_to_list(subscriber, subscriber.list)
   def add_to_list(subscriber = %Subscriber{}, list_id) do
     Jason.encode!(subscriber)
     |> MR.add_to_list(list_id)
   end
-  def add_to_list(params, list_id) when is_map(params) do
-    case Subscriber.validate_params(params) do
-      {:ok, new_sub} -> add_to_list(new_sub, list_id)
-      error -> error
-    end
-  end
-  def add_to_list(email, list_id, status, test?), do: add_to_list(%{"email" => email}, list_id, status, test?)
 
   @doc """
   Creates a new subscription. To do so, checks if an email already exists in our local database,
@@ -43,97 +37,105 @@ defmodule PlumaApi.Mailchimp do
   **Returns:**
   - `{:ok, Jason.decode!(mailchimp_response_body)}`
   - `{:error, Jason.decode!(mailchimp_response_body)}`
-  - `{:error, {:validation, incorrect_changeset}}`
   - `{:error, {:local_email_found, %Subscriber{}}}`
+  - `{:error, {:validation, incorrect_changeset}}`
   """
-  def subscribe(params, list_id) do
+  def subscribe(%{email: email} = params) do
     OK.for do
-      validated <- Subscriber.validate_params(params)
-      safe <- ensure_doesnt_exist(validated)
-      result <- add_to_list(safe, list_id)
+      _ <- ensure_not_in_db(email)
+      local <- add_to_db(params)
+      response <- upsert_remote(local)
+      _ <- update_parent(local, local.list)
     after
-      result 
+      response
     end
   end
-
-  defp ensure_doesnt_exist(subscriber = %Subscriber{}) do
-    OK.for do
-      _ <- ensure_email_not_in_db(subscriber)
-      safe_sub = ensure_no_rid_collision(subscriber)
-    after
-      safe_sub
-    end
-  end
-
-  defp ensure_email_not_in_db(subscriber) do
-    Subscriber.with_email(subscriber.email)
-    |> PlumaApi.Repo.one
-    |> case do
-      nil -> {:ok, subscriber}
-      sub -> {:error, {:local_email_found, sub}}
-    end
-  end
-
-  defp ensure_no_rid_collision(subscriber) do
-    Subscriber.with_rid(subscriber.rid)
-    |> PlumaApi.Repo.one
-    |> case do
-      nil -> {:ok, subscriber}
-      _sub -> {:ok, assign_new_rid(subscriber)}
-    end
-  end
-
-  defp assign_new_rid(subscriber), do: %{ subscriber | rid: Nanoid.generate() }
 
   @doc """
-  Confirms a subscription. In doing so, it adds a subscriber to our database reflecting the details
-  of the subscriber present in Mailchimp. If the subscriber is already present, they're retrieved and
-  potential RID collisions are resolved (with a bias towards local RID's).
+  Handles a new subscription as submitted via a Mailchimp Webhook. Will upsert a local
+  `Subscriber`, and then upsert the remote record (in order to update `RID` field), as
+  well as potentially tag the remote record.
 
   **Parameters:**
-  - `params`: A map of parameters to insert. These get validated by the `Subscriber.validate_params` function,
-              which turns them into a `%Subscriber{}` struct.
-  - `list_id`: The list on which we're operating. Used for syncing rid's if necessary.
+  - `params`: a digested (i.e. compatible with `Subscriber.changeset/2` and schema map of
+    values. Crucially, should include `"email"`, `"status"`, and `"list"`.
 
   **Returns:**
-  - `{:ok, %Subscriber{}}`
-  - `{:error, {:validation, incorrect_changeset}}`
-  - `{:error, {:local_insert_failed, {params, chgst}}}`
-  - `{:error, {:error_tagging_subscriber, {subscriber, error_response}}}`
+  - `{:ok, mailchimp_response_body}` on success.
+  - `{:error, {:local_upsert_error, chgst}}` on error updating the local `Subscriber`.
+  - `{:error, {:mc_upsert_error, resp}}` on error upserting the remote record with the 
+    new `Subscriber` details.
+  - `{:error, {:mc_error_tagging, {subscriber, response}}}` on error tagging the parent
+    when VIP status achieved.
   """
-  def confirm_subscription(params, list_id) do
+  def webhook_subscribe(params) do
     OK.for do
-      validated <- Subscriber.validate_params(params)
-      subscriber <- insert_or_retrieve_subscriber(validated)
-      synced <- sync_rids(subscriber, validated, list_id)
-      _updated_parent <- update_parent(synced, list_id)
+      local <- upsert_local(params)
+      response <- upsert_remote(local)
+      _ <- update_parent(local, local.list)
     after
-      synced
+      response
     end
   end
 
-  defp insert_or_retrieve_subscriber(params = %Subscriber{}) do
-    case find_in_db (params) do
-      {:error, {:local_not_found, _}} -> insert_subscriber(params)
-      {:ok, sub} -> {:ok, sub}
+  @doc """
+  Handles unsubscribe Mailchimp Webhooks. Will upsert a local `Subscriber` with a
+  "unsubscribed" `status`.
+
+  **Parameters:**
+  - `params`: a digested (i.e. compatible with `Subscriber.changeset/2` and schema map of
+    values. Crucially, should include `"email"`, `"status"`, and `"list"`.
+
+  **Returns:**
+  - `{:ok, local_sub}` on success.
+  - `{:error, {:local_upsert_error, chgst}}` on error updating the local `Subscriber`.
+  """
+  def webhook_unsubscribe(params) do
+    OK.for do
+      local <- upsert_local(params) 
+    after
+      local
     end
   end
 
-  defp find_in_db(params = %Subscriber{}), do: find_in_db(params.email)
-  defp find_in_db(email) do
+  defp ensure_not_in_db(email) do
     Subscriber.with_email(email)
     |> PlumaApi.Repo.one
     |> case do
-      nil -> {:error, {:local_not_found, email}}
-      sub -> {:ok, sub}
+      nil -> {:ok, :not_found}
+      sub -> {:error, {:local_sub_found, sub}}
     end
   end
 
-  defp insert_subscriber(params) do
-    PlumaApi.Repo.insert(params)
+  defp add_to_db(params) do
+    Subscriber.changeset(%Subscriber{}, params)
+    |> PlumaApi.Repo.insert
     |> case do
       {:ok, sub} -> {:ok, sub}
-      {:error, chgst} -> {:error, {:local_insert_failed, {params, chgst}}}
+      {:error, chgst} -> {:error, {:local_insert_error, chgst}}
+    end
+  end
+
+  defp upsert_local(params) do
+    Subscriber.with_email(params.email)
+    |> PlumaApi.Repo.one
+    |> case do
+      nil -> %Subscriber{}
+      sub -> sub
+    end
+    |> Subscriber.changeset(params)
+    |> PlumaApi.Repo.insert_or_update
+    |> case do
+      {:ok, sub} -> {:ok, sub}
+      {:error, chgst} -> {:error, {:local_upsert_error, chgst}}
+    end
+  end
+
+  defp upsert_remote(%Subscriber{} = sub) do
+    data = Jason.encode!(sub)
+    case MR.upsert_member(sub.email, data, sub.list) do
+      {:ok, resp} -> {:ok, resp}
+      {:error, resp} -> {:error, {:mc_upsert_error, resp}}
     end
   end
 
@@ -164,7 +166,7 @@ defmodule PlumaApi.Mailchimp do
     if length(subscriber.referees) == 3 do
       case MR.tag_subscriber(subscriber.email, list_id, [%{ name: "VIP", status: "active" }]) do
         {:ok, _response} -> {:ok, subscriber}
-        {:error, response} -> {:error, {:error_tagging_subscriber, {subscriber, response}}}
+        {:error, response} -> {:error, {:mc_error_tagging, {subscriber, response}}}
       end
     else
       {:ok, :vip_not_granted}
@@ -174,37 +176,5 @@ defmodule PlumaApi.Mailchimp do
   defp has_parent_rid(child) do
     if not is_nil(child.parent_rid) and String.length(child.parent_rid) != 0, do: true, else: false
   end
-
-  @doc """
-  
-  """
-  def unsubscribe(email) do
-    OK.for do
-      subscriber <- find_in_db(email)
-      _deleted <- remove_subscriber(subscriber)
-    after
-      subscriber
-    end
-  end
-
-  defp remove_subscriber(subscriber = %Subscriber{}) do
-    case PlumaApi.Repo.delete(subscriber) do
-      {:ok, sub} -> {:ok, sub}
-      {:error, chgst} -> {:error, {:local_delete_failed, {subscriber, chgst}}}
-    end
-  end
-
-  @doc """
-  Synchronizes remote and local RID values, given a local subscriber (`Subscriber`) and 
-  an external subscriber (a `map` of subscriber parameters). Used with the webhook interface.
-
-  Can handle missing RID's on both ends, with a bias towards a local RID. Will correct incongruent
-  RID's as well.
-
-  Returns `{:ok, subscriber}` where subscriber is the synced subscriber. 
-  Also returns `{:error, {:remote_update_error, {sub, response}}}` and `{:error, {:local_update_error, {sub, chgst}}}` in case
-  there's a problem communicating with the remote API or local DB.
-  """
-  def sync_rids(local_sub = %Subscriber{}, remote_sub, list_id), do: PlumaApi.Mailchimp.Syncer.sync_remote_and_local_RIDs(local_sub, remote_sub, list_id)
 
 end

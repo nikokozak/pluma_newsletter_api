@@ -74,7 +74,7 @@ defmodule PlumaApiWeb.MailchimpWebhookController do
     case Mailchimp.webhook_unsubscribe(params) do
       {:ok, _deleted} -> 
         Logger.info("Unsubscribe webhook for #{params.email} processed succesfully.")
-        webhook_response(conn, 204)
+        webhook_response(conn, 200)
       {:error, error} -> 
         log_error(error)
         webhook_response(conn, 202)

@@ -122,7 +122,7 @@ defmodule PlumaApi.Mailchimp do
     end
   end
 
-  defp upsert_local(params) do
+  def upsert_local(params) do
     Subscriber.with_email(params.email)
     |> PlumaApi.Repo.one
     |> case do
@@ -137,7 +137,7 @@ defmodule PlumaApi.Mailchimp do
     end
   end
 
-  defp upsert_remote(%Subscriber{} = sub) do
+  def upsert_remote(%Subscriber{} = sub) do
     data = Jason.encode!(sub)
     case MR.upsert_member(sub.email, data, sub.list) do
       {:ok, resp} -> {:ok, resp}

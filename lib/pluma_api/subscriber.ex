@@ -43,7 +43,7 @@ defmodule PlumaApi.Subscriber do
     field :email, :string, null: false
     field :list, :string, default: @default_list
 
-    field :rid, :string, default: Nanoid.generate() 
+    field :rid, :string #, default: Nanoid.generate() 
     field :parent_rid, :string, default: ""
 
     has_many :referees, __MODULE__, foreign_key: :parent_rid, references: :rid
@@ -78,12 +78,20 @@ defmodule PlumaApi.Subscriber do
     |> cast(params, fields)
     |> validate_required([:email])
     |> unique_constraint(:email)
+    |> inject_rid
     |> validate_format(:email, @email_regex)
     |> validate_format(:fname, @name_regex)
     |> validate_format(:lname, @name_regex)
     |> validate_format(:rid, @rid_regex)
     |> validate_format(:parent_rid, @rid_regex)
     |> validate_inclusion(:status, @status_types)
+  end
+
+  defp inject_rid(changeset) do
+    case get_field(changeset, :rid) do
+      nil -> put_change(changeset, :rid, Nanoid.generate())
+      _found -> changeset
+    end
   end
 
   def with_id(query \\ __MODULE__, id), do: from s in query, where: ^id == s.id 

@@ -36,6 +36,7 @@ config :nanoid,
 config :pluma_api, :mailchimp, 
   main_list: "main",
   main_list_id: "4cc41938a8",
+  default_list: "4cc41938a8",
   premium_list: "premium",
   api_key: "d653f0705d495611865bc7ca6de63515-us2",
   api_server: "us2"

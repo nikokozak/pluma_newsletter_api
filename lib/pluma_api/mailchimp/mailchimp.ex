@@ -7,11 +7,11 @@ defmodule PlumaApi.Mailchimp do
   Adds a subscriber to a given Mailchimp audience.
   `subscriber` -> a map of subscriber values or a `Subscriber` or a `NewSubscriber` struct.
   `list_id` -> the mailchimp list to which the subscriber will be added.
-  `status` -> one-of "pending" or "subscribed". "pending" subscribers are not formally in the 
+  `status` -> one-of "pending" or "subscribed". "pending" subscribers are not formally in the
               Mailchimp list: instead, a confirmation request is sent to the subscriber. If
-              "subscribed", the API invokes a Webhook which is handled by our server, and the 
+              "subscribed", the API invokes a Webhook which is handled by our server, and the
               subscriber is formally added to the list.
-  `test?` -> whether to include a "Test" tag in the data passed to Mailchimp. Useful in case 
+  `test?` -> whether to include a "Test" tag in the data passed to Mailchimp. Useful in case
               we need to manually delete test-created subscribers.
 
   Returns `{:ok, body}` or `{:error, error_body}`
@@ -26,7 +26,7 @@ defmodule PlumaApi.Mailchimp do
   Creates a new subscription. To do so, checks if an email already exists in our local database,
   resolves RID collisions, and calls the Mailchimp API to insert a new subscriber.
 
-  *Note*: New subscribers are NOT inserted into the local database. Rather, they are added to 
+  *Note*: New subscribers are NOT inserted into the local database. Rather, they are added to
   the desired Mailchimp list as `"pending"`. Inserting subscribers into our local DB and thus resolving
   the flow is the responsibility of `confirm_subscription`.
 
@@ -40,7 +40,7 @@ defmodule PlumaApi.Mailchimp do
   - `{:error, {:local_pending_sub_found, sub}}`
   - `{:error, {:local_sub_found, %Subscriber{}}}`
   - `{:error, {:local_insert_error, {params, chgst}}}`
-  - `{:error, {:mc_upsert_error, {sub, resp}}}` on error upserting the remote record with the 
+  - `{:error, {:mc_upsert_error, {sub, resp}}}` on error upserting the remote record with the
     new `Subscriber` details.
   - `{:error, {:mc_error_tagging, {subscriber, response}}}` on error tagging the parent
     when VIP status achieved.
@@ -68,7 +68,7 @@ defmodule PlumaApi.Mailchimp do
   **Returns:**
   - `{:ok, mailchimp_response_body}` on success.
   - `{:error, {:local_upsert_error, {sub, chgst}}}` on error updating the local `Subscriber`.
-  - `{:error, {:mc_upsert_error, {sub, resp}}}` on error upserting the remote record with the 
+  - `{:error, {:mc_upsert_error, {sub, resp}}}` on error upserting the remote record with the
     new `Subscriber` details.
   - `{:error, {:mc_error_tagging, {subscriber, response}}}` on error tagging the parent
     when VIP status achieved.
@@ -97,7 +97,7 @@ defmodule PlumaApi.Mailchimp do
   """
   def webhook_unsubscribe(params) do
     OK.for do
-      local <- upsert_local(params) 
+      local <- upsert_local(params)
     after
       local
     end
@@ -145,10 +145,10 @@ defmodule PlumaApi.Mailchimp do
     end
   end
 
-  # Returns 
-  # {:ok, :no_parent} | 
-  # {:ok, :vip_not_granted} | 
-  # {:ok, %Subscriber{}} (if granted) | 
+  # Returns
+  # {:ok, :no_parent} |
+  # {:ok, :vip_not_granted} |
+  # {:ok, %Subscriber{}} (if granted) |
   # {:error, {:error_tagging_subscriber, {subscriber, error_response}}}
   defp update_parent(child, list_id) do
     case get_parent(child) do
@@ -167,6 +167,7 @@ defmodule PlumaApi.Mailchimp do
     end
   end
 
+  defp maybe_award_vip(nil, _list_id), do: {:ok, :vip_not_granted}
   defp maybe_award_vip(subscriber = %Subscriber{}, list_id) do
     subscriber = PlumaApi.Repo.preload(subscriber, :referees)
     confirmed_referees = filter_confirmed(subscriber.referees)
